@@ -1,0 +1,102 @@
+[
+  {
+    "role": "user",
+    "message": "hello i wnt refund of my product",
+    "time": "2025-12-14 15:47:29",
+    "meta": {
+      "category": "Refund",
+      "confidence": 0.72,
+      "priority": "Normal \ud83d\udfe1"
+    }
+  },
+  {
+    "role": "ai",
+    "message": "\nDear Customer,\n\nI see you\u2019ve contacted us before regarding this issue.\nWe have received your message regarding refund.\n\nBest regards,\nSupport Team\n",
+    "time": "2025-12-14 15:47:29",
+    "meta": {
+      "ticket_id": "CS-62133A",
+      "assigned_team": "Finance Team \ud83d\udcb0"
+    }
+  },
+  {
+    "role": "user",
+    "message": "tell me something about store",
+    "time": "2025-12-14 15:49:14",
+    "meta": {
+      "category": "Refund",
+      "confidence": 0.33,
+      "priority": "Normal \ud83d\udfe1"
+    }
+  },
+  {
+    "role": "ai",
+    "message": "Thanks for reaching out. Your request has been escalated to a human agent to ensure proper handling.",
+    "time": "2025-12-14 15:49:14",
+    "meta": {
+      "ticket_id": "CS-E09009",
+      "assigned_team": "Finance Team \ud83d\udcb0"
+    }
+  },
+  {
+    "role": "user",
+    "message": "tell me something about store",
+    "time": "2025-12-14 15:49:33",
+    "meta": {
+      "category": "Refund",
+      "confidence": 0.33,
+      "priority": "Normal \ud83d\udfe1"
+    }
+  },
+  {
+    "role": "ai",
+    "message": "Thanks for reaching out. Your request has been escalated to a human agent to ensure proper handling.",
+    "time": "2025-12-14 15:49:33",
+    "meta": {
+      "ticket_id": "CS-FEE735",
+      "assigned_team": "Finance Team \ud83d\udcb0"
+    }
+  },
+  {
+    "role": "user",
+    "message": "hello i want to know about my product\n",
+    "time": "2025-12-15 00:46:50",
+    "meta": {
+      "category": "Complaint",
+      "confidence": 0.45,
+      "priority": "Normal \ud83d\udfe1"
+    }
+  },
+  {
+    "role": "ai",
+    "message": "Thanks for reaching out. Your request has been escalated to a human agent to ensure proper handling.",
+    "time": "2025-12-15 00:46:50",
+    "meta": {
+      "ticket_id": "CS-203348",
+      "assigned_team": "General Support \ud83c\udfa7"
+    }
+  },
+  {
+    "role": "user",
+    "message": "i want know abut ny product that i have order if it will not be deliverd i will cancel the order",
+    "time": "2025-12-19 14:33:59",
+    "meta": {}
+  },
+  {
+    "role": "ai",
+    "message": "Thanks for reaching out. Your request has been escalated to a human agent to ensure proper handling.",
+    "time": "2025-12-19 14:33:59",
+    "meta": {}
+  },
+  {
+    "role": "user",
+    "message": "hello i wnt refund of my product",
+    "time": "2025-12-19 19:59:49",
+    "meta": {}
+  },
+  {
+    "role": "ai",
+    "message": "\nDear Customer,\n\nI see you\u2019ve contacted us before regarding this issue.\nWe have received your message regarding refund.\n\nBest regards,\nSupport Team\n",
+    "time": "2025-12-19 19:59:49",
+    "meta": {}
+  }
+]

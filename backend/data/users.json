@@ -1,0 +1,38 @@
+[
+  {
+    "email": "admin@company.com",
+    "password": "$2b$12$g3UUC8fyftJVx6tn2sCDI.mBTgHJ94pNC03ofY6CYdyJN3xmeAgmq",
+    "role": "admin",
+    "name": "Admin"
+  },
+  {
+    "email": "agent1@company.com",
+    "password": "$2b$12$0UyVgsqaz1e/zac56s6JvOuhA/N6JgmbX6YtIluYvXWNTf9LOfLhe",
+    "role": "agent",
+    "name": "Agent 1"
+  },
+  {
+    "email": "agent2@company.com",
+    "password": "$2b$12$0UyVgsqaz1e/zac56s6JvOuhA/N6JgmbX6YtIluYvXWNTf9LOfLhe",
+    "role": "agent",
+    "name": "Agent 2"
+  },
+  {
+    "email": "agent3@company.com",
+    "password": "$2b$12$0UyVgsqaz1e/zac56s6JvOuhA/N6JgmbX6YtIluYvXWNTf9LOfLhe",
+    "role": "agent",
+    "name": "Agent 3"
+  },
+  {
+    "email": "agent4@company.com",
+    "password": "$2b$12$0UyVgsqaz1e/zac56s6JvOuhA/N6JgmbX6YtIluYvXWNTf9LOfLhe",
+    "role": "agent",
+    "name": "Agent 4"
+  },
+  {
+    "email": "azamfarooq891@gmail.com",
+    "password": "$2b$12$PgaAIFL5QBkGBvbvt/TDM.eqB4U5BarG9T1sQ1uLezhTDc9Bbq.0S",
+    "role": "user",
+    "name": "Farooq Azam"
+  }
+]

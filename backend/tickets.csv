@@ -1,0 +1,22 @@
+TicketID,Timestamp,Title,Message,Category,Confidence,Priority,Agent,ResponseTime,SLA_Breached,Escalated
+TKT-1001,2025-01-01 10:02,Refund Request,"I want a refund",Billing,0.88,High,agent1@company.com,7,True,True
+TKT-1002,2025-01-01 10:10,Login Issue,"Unable to login",Auth,0.91,Medium,agent2@company.com,5,False,False
+TKT-1003,2025-01-01 10:15,Payment Failed,"Payment not going through",Billing,0.85,High,agent1@company.com,8,True,True
+TKT-1004,2025-01-01 10:25,Slow App,"App is very slow",Technical,0.76,Low,agent3@company.com,12,False,False
+TKT-1005,2025-01-01 10:40,Password Reset,"Forgot my password",Auth,0.93,Low,agent2@company.com,4,False,False
+TKT-1006,2025-01-01 11:00,Wrong Charge,"Charged twice",Billing,0.89,High,agent1@company.com,9,True,True
+TKT-1007,2025-01-01 11:10,Feature Request,"Add dark mode",Feature,0.67,Low,agent3@company.com,15,False,False
+TKT-1008,2025-01-01 11:20,App Crash,"App crashes on launch",Technical,0.82,High,agent4@company.com,6,True,True
+TKT-1009,2025-01-01 11:35,Email Issue,"Not receiving emails",Communication,0.78,Medium,agent2@company.com,10,False,False
+TKT-1010,2025-01-01 11:50,Refund Delay,"Refund taking too long",Billing,0.86,High,agent1@company.com,11,True,True
+TKT-1011,2025-01-01 12:00,Account Locked,"My account is locked",Auth,0.92,Medium,agent2@company.com,6,False,False
+TKT-1012,2025-01-01 12:10,UI Bug,"Button not clickable",Technical,0.74,Low,agent3@company.com,13,False,False
+TKT-1013,2025-01-01 12:25,Payment Error,"Card declined incorrectly",Billing,0.87,High,agent4@company.com,7,True,True
+TKT-1014,2025-01-01 12:40,Notification Bug,"Getting duplicate alerts",Technical,0.71,Low,agent3@company.com,14,False,False
+TKT-1015,2025-01-01 12:55,Subscription Cancel,"Cancel my subscription",Billing,0.90,Medium,agent1@company.com,5,False,False
+TKT-1016,2025-01-01 13:05,Profile Update,"Can't update profile",Technical,0.79,Medium,agent4@company.com,8,False,False
+TKT-1017,2025-01-01 13:20,Refund Follow-up,"Still waiting for refund",Billing,0.84,High,agent1@company.com,10,True,True
+TKT-1018,2025-01-01 13:35,App Freeze,"Screen freezes randomly",Technical,0.81,Medium,agent3@company.com,9,False,False
+CS-56EBD9,2025-12-19 14:33:59,Follow-up: Order Inquiry,i want know abut ny product that i have order if it will not be deliverd i will cancel the order,Order Inquiry,0.51,Normal 🟡,agent1@company.com,0,False,False
+CS-652712,2025-12-19 19:59:49,Follow-up: Refund,hello i wnt refund of my product,Refund,0.72,Normal 🟡,agent1@company.com,0,False,False
+CS-A9F919,2025-12-20 17:37:59,New Issue: Refund,Hello i want to about the extra charges,Refund,0.3,Normal 🟡,agent2@company.com,0,False,False

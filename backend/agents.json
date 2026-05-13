@@ -1,0 +1,5 @@
+{
+  "support": ["agent1@company.com", "agent2@company.com" , "agent3@company.com" , "agent3@company.com"  ],
+  "billing": ["billing1@company.com"],
+  "technical": ["tech1@company.com"]
+}
