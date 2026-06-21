@@ -15,9 +15,18 @@ export const AuthProvider = ({ children }) => {
         password
       });
 
+      const userObj = {
+        access_token: res.data.access_token,
+        id: res.data.id,
+        email: res.data.email,
+        name: res.data.name,
+        role: res.data.role,
+        gmail_connected: res.data.gmail_connected,
+      };
+
       localStorage.setItem("token", res.data.access_token);
-      localStorage.setItem("user", JSON.stringify(res.data));
-      setUser(res.data);
+      localStorage.setItem("user", JSON.stringify(userObj));
+      setUser(userObj);
       return { success: true };
     } catch (error) {
       let message = error.response?.data?.detail || "Login failed. Please check your credentials.";
@@ -37,9 +46,17 @@ export const AuthProvider = ({ children }) => {
 
       // Backend now returns access_token on register too
       if (res.data.access_token) {
+        const userObj = {
+          access_token: res.data.access_token,
+          id: res.data.id,
+          email: res.data.email,
+          name: res.data.name,
+          role: res.data.role,
+          gmail_connected: res.data.gmail_connected,
+        };
         localStorage.setItem("token", res.data.access_token);
-        localStorage.setItem("user", JSON.stringify(res.data));
-        setUser(res.data);
+        localStorage.setItem("user", JSON.stringify(userObj));
+        setUser(userObj);
       }
 
       return { success: true, message: res.data.message };

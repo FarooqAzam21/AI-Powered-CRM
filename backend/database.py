@@ -1,14 +1,29 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+import os
+from pathlib import Path
 
-DATABASE_URL = "sqlite:///./data/app.db"
+from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
+
+Path("data").mkdir(exist_ok=True)
+
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/app.db")
+connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 
 engine = create_engine(
-    DATABASE_URL, connect_args={"check_same_thread": False}
+    DATABASE_URL,
+    connect_args=connect_args,
+    pool_pre_ping=True,
+    future=True,
 )
 
-SessionLocal = sessionmaker(
-    autocommit=False, autoflush=False, bind=engine
-)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, future=True)
 
 Base = declarative_base()
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

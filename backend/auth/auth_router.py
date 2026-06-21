@@ -47,6 +47,7 @@ def register(data: Register, db: Session = Depends(get_db)):
     return {
         "message": "Registration successful!",
         "access_token": token,
+        "id": user.id,
         "email": user.email,
         "name": user.name,
         "role": user.role,
@@ -79,6 +80,7 @@ def login(data: Login):
 
     return {
         "access_token": token,
+        "id": user.id,
         "email": user.email,
         "name": user.name,
         "role": user.role,

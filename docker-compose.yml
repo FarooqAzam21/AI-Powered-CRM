@@ -1,0 +1,76 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: crm
+      POSTGRES_PASSWORD: crm
+      POSTGRES_DB: aicrm
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crm -d aicrm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    env_file:
+      - backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://crm:crm@db:5432/aicrm
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./backend/data:/app/backend/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build: .
+    command: celery -A tasks.celery_app.celery_app worker --loglevel=INFO --pool=solo -Q email,ai,leads,campaigns,maintenance,crm,analytics,dashboard
+    env_file:
+      - backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://crm:crm@db:5432/aicrm
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./backend/data:/app/backend/data
+
+  beat:
+    build: .
+    command: celery -A tasks.celery_app.celery_app beat --loglevel=INFO
+    env_file:
+      - backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://crm:crm@db:5432/aicrm
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./backend/data:/app/backend/data
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --save "" --appendonly no
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata:

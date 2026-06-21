@@ -7,6 +7,8 @@ import uuid
 from datetime import timedelta
 from urllib.parse import urlencode
 from dotenv import load_dotenv
+from config.settings import get_settings
+from utils.security import encrypt_secret
 
 load_dotenv()
 
@@ -18,8 +20,8 @@ router = APIRouter(prefix="/google", tags=["Google Integration"])
 
 CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-# Redirect to Backend directly
-REDIRECT_URI = "http://localhost:8000/google/callback" 
+settings = get_settings()
+REDIRECT_URI = settings.google_redirect_uri
 
 @router.get("/login")
 def login(db: Session = Depends(get_db)):
@@ -83,7 +85,7 @@ def callback(code: str, state: str, db: Session = Depends(get_db)):
                 {"sub": sim_user.email, "name": sim_user.name, "role": sim_user.role, "gmail_connected": True}, 
                 timedelta(days=1)
             )
-            return RedirectResponse(f"http://localhost:5173/auth/callback?token={token}", status_code=303)
+            return RedirectResponse(f"{settings.frontend_url}/auth/callback?token={token}", status_code=303)
 
         # 2. Exchange Code for Tokens
         token_url = "https://oauth2.googleapis.com/token"
@@ -130,14 +132,14 @@ def callback(code: str, state: str, db: Session = Depends(get_db)):
                 "role": "user",
                 "is_verified": True, 
                 "gmail_connected": True,
-                "google_access_token": access_token,
-                "google_refresh_token": refresh_token
+                "google_access_token": encrypt_secret(access_token),
+                "google_refresh_token": encrypt_secret(refresh_token)
             })
         else:
             print("DEBUG: Updating existing user tokens")
-            user.google_access_token = access_token
+            user.google_access_token = encrypt_secret(access_token)
             if refresh_token:
-                user.google_refresh_token = refresh_token
+                user.google_refresh_token = encrypt_secret(refresh_token)
             user.gmail_connected = True
             db.commit()
 
@@ -148,7 +150,7 @@ def callback(code: str, state: str, db: Session = Depends(get_db)):
         )
         
         # 6. Redirect to Frontend Callback
-        return RedirectResponse(f"http://localhost:5173/auth/callback?token={app_token}", status_code=303)
+        return RedirectResponse(f"{settings.frontend_url}/auth/callback?token={app_token}", status_code=303)
 
     except Exception as e:
         print(f"CRITICAL ERROR in /google/callback: {str(e)}")
