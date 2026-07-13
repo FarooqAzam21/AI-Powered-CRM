@@ -6,7 +6,7 @@ import logging
 import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from sqlalchemy.orm import Session
-from auth.dependencies import get_current_user
+from auth.dependencies import get_current_user_model
 from auth.models import User
 from database import SessionLocal
 from ws_manager.socket import manager
@@ -104,7 +104,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int, db: Session = D
 
 @router.get("/ws/metrics/dashboard")
 async def get_dashboard_metrics(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Get current dashboard metrics snapshot"""
@@ -123,7 +123,7 @@ async def get_dashboard_metrics(
 
 @router.get("/ws/metrics/pipeline")
 async def get_pipeline_snapshot(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Get real-time pipeline snapshot"""
@@ -142,7 +142,7 @@ async def get_pipeline_snapshot(
 
 @router.get("/ws/metrics/territories")
 async def get_territories_snapshot(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Get real-time territory performance snapshot"""
@@ -163,7 +163,7 @@ async def get_territories_snapshot(
 
 @router.get("/ws/connections")
 async def get_connection_status(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Get WebSocket connection status"""
@@ -181,7 +181,7 @@ async def get_connection_status(
 async def manual_broadcast(
     channel: str,
     message: dict,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """

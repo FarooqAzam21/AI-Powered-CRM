@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from auth.dependencies import get_current_user
+from auth.dependencies import get_current_user_model
 from auth.models import User
 from models.crm import Deal
 from database import SessionLocal
@@ -68,7 +68,7 @@ router = APIRouter(prefix="/api/v1/deals", tags=["Deals"])
 @router.post("/", response_model=DealResponse)
 async def create_deal(
     deal: DealCreate,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_model)
 ):
     """Create a new deal"""
     try:
@@ -105,7 +105,7 @@ async def list_deals(
     status: Optional[str] = Query(None),
     stage: Optional[str] = Query(None),
     limit: int = Query(50, le=100),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_model)
 ):
     """List deals for current user"""
     try:
@@ -126,7 +126,7 @@ async def list_deals(
 
 @router.get("/pipeline/summary", response_model=PipelineSummaryResponse)
 async def get_pipeline_summary(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_model)
 ):
     """Get pipeline summary with stats"""
     try:
@@ -142,7 +142,7 @@ async def get_pipeline_summary(
 @router.get("/{deal_id}", response_model=DealDetailResponse)
 async def get_deal(
     deal_id: int,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_model)
 ):
     """Get single deal details"""
     try:
@@ -168,7 +168,7 @@ async def get_deal(
 async def update_deal(
     deal_id: int,
     deal_update: DealUpdate,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_model)
 ):
     """Update deal details"""
     try:
@@ -216,7 +216,7 @@ async def close_deal(
     deal_id: int,
     won: bool = Query(True),
     reason: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_model)
 ):
     """Close deal as won or lost"""
     try:
@@ -245,7 +245,7 @@ async def close_deal(
 
 @router.get("/overdue/list")
 async def get_overdue_deals(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_model)
 ):
     """Get overdue deals"""
     try:
@@ -278,7 +278,7 @@ async def add_deal_activity(
     description: str,
     value_impact: float = 0,
     probability_impact: float = 0,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_model)
 ):
     """Add activity to deal"""
     try:
@@ -313,7 +313,7 @@ async def add_deal_activity(
 
 @router.get("/forecast/revenue")
 async def get_revenue_forecast(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_model)
 ):
     """Get revenue forecast based on deal pipeline"""
     try:

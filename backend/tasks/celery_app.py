@@ -8,11 +8,39 @@ from celery.schedules import crontab
 import logging
 import os
 
+from dotenv import load_dotenv
+
 logger = logging.getLogger(__name__)
+load_dotenv()
 
 # =================== CELERY APP ===================
 broker_url = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
-result_backend = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
+result_backend = os.getenv("CELERY_RESULT_BACKEND", os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+environment = os.getenv("ENVIRONMENT", "development")
+
+
+def _redis_reachable(url: str) -> bool:
+    if not url.startswith("redis://"):
+        return True
+    try:
+        import redis
+
+        client = redis.Redis.from_url(url, socket_connect_timeout=0.5, socket_timeout=0.5)
+        client.ping()
+        return True
+    except Exception as exc:
+        logger.warning("Redis broker is unavailable at %s: %s", url, exc)
+        return False
+
+
+CELERY_REDIS_AVAILABLE = _redis_reachable(broker_url)
+
+if not CELERY_REDIS_AVAILABLE and environment != "production":
+    logger.warning("Using in-memory Celery broker/backend for development fallback")
+    broker_url = "memory://"
+    result_backend = "cache+memory://"
+    os.environ["CELERY_BROKER_URL"] = broker_url
+    os.environ["CELERY_RESULT_BACKEND"] = result_backend
 
 celery_app = Celery(
     "ai_crm",
@@ -34,6 +62,8 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,  # One task at a time (memory efficient)
     result_expires=3600,  # Results expire after 1 hour
     task_acks_late=True,
+    broker_connection_retry_on_startup=CELERY_REDIS_AVAILABLE,
+    broker_connection_max_retries=3 if CELERY_REDIS_AVAILABLE else 0,
 )
 
 # =================== PERIODIC TASKS ===================

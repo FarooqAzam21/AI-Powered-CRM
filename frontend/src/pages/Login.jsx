@@ -1,18 +1,33 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { motion } from "framer-motion";
 import { Mail, Lock, ChevronRight, AlertCircle } from "lucide-react";
 import BackgroundParticles from "../Components/BackgroundParticles";
+import GoogleAuthButton from "../Components/GoogleAuthButton";
 
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const oauthError = searchParams.get("error");
+    if (oauthError) {
+      const messages = {
+        token_failed: "Google sign-in failed. Check GOOGLE_CLIENT_SECRET and redirect URI.",
+        profile_failed: "Could not load your Google profile.",
+        no_email: "Google account has no email address.",
+        internal_error: "Server error during Google sign-in.",
+      };
+      setError(messages[oauthError] || "Google sign-in failed.");
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -62,6 +77,14 @@ export default function Login() {
                 <p className="text-sm font-medium">{error}</p>
               </div>
             )}
+
+            <GoogleAuthButton intent="login" />
+
+            <div className="my-6 flex items-center gap-3">
+              <div className="h-px flex-1 bg-slate-800" />
+              <span className="text-xs text-slate-500">or email</span>
+              <div className="h-px flex-1 bg-slate-800" />
+            </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">

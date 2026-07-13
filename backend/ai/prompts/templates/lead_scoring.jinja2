@@ -1,0 +1,15 @@
+Evaluate this lead and provide a score from 1 to 100 based on the provided data.
+
+### Lead Data:
+{{ contact_info }}
+
+Return ONLY a JSON object strictly following this schema:
+{
+    "score": 85,
+    "label": "hot",
+    "confidence": 0.9,
+    "buying_intent": 0.8,
+    "urgency": 0.7,
+    "hiring_intent": 0.2,
+    "recommended_next_action": "Schedule a demo call"
+}

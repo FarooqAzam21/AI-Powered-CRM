@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { User, Lock, Mail, ChevronRight, AlertCircle, CheckCircle2 } from "lucide-react";
 import BackgroundParticles from "../Components/BackgroundParticles";
+import GoogleAuthButton from "../Components/GoogleAuthButton";
 
 export default function Register() {
   const { register } = useAuth();
@@ -84,6 +85,14 @@ export default function Register() {
                 </motion.div>
               )}
             </AnimatePresence>
+
+            <GoogleAuthButton intent="signup" label="Sign up with Google" />
+
+            <div className="my-6 flex items-center gap-3">
+              <div className="h-px flex-1 bg-slate-800" />
+              <span className="text-xs text-slate-500">or email</span>
+              <div className="h-px flex-1 bg-slate-800" />
+            </div>
 
             <form onSubmit={submit} className="space-y-4">
               <div className="space-y-2">
@@ -187,7 +196,7 @@ export default function Register() {
                   <button
                     type="button"
                     className="text-white font-semibold hover:text-green-400 transition-colors"
-                    onClick={() => setBack(true)}
+                    onClick={() => navigate("/login")}
                   >
                     Login
                   </button>

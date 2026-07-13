@@ -1,0 +1,23 @@
+Analyze this new interaction with a customer and extract key memory points to update their CRM profile.
+        
+### Current Memory State:
+- Communication Style: {{ memory.communication_style }}
+- Pain Points: {{ memory.pain_points }}
+- Products Discussed: {{ memory.products_discussed }}
+- Objections: {{ memory.objections }}
+- Buying Signals: {{ memory.buying_signals }}
+- Preferences: {{ memory.preferences }}
+
+### New Interaction:
+"{{ interaction_text }}"
+
+Return ONLY a JSON object with the updated fields (merge new info with existing info).
+Format strictly as:
+{
+    "communication_style": "string",
+    "pain_points": ["string"],
+    "products_discussed": ["string"],
+    "objections": ["string"],
+    "buying_signals": ["string"],
+    "preferences": ["string"]
+}

@@ -1,6 +1,35 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root,
+[data-theme="dark"] {
+  --crm-bg: #080b12;
+  --crm-panel: #0c111d;
+  --crm-text: #e2e8f0;
+  --crm-muted: #94a3b8;
+  --crm-border: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="light"] {
+  --crm-bg: #f1f5f9;
+  --crm-panel: #ffffff;
+  --crm-text: #0f172a;
+  --crm-muted: #64748b;
+  --crm-border: rgba(15, 23, 42, 0.12);
+}
+
 body {
-  @apply bg-[#0b0f19] text-gray-200;
+  background: var(--crm-bg);
+  color: var(--crm-text);
+}
+
+[data-theme="light"] .crm-shell {
+  background: var(--crm-bg);
+  color: var(--crm-text);
+}
+
+[data-theme="light"] .crm-panel {
+  background: var(--crm-panel);
+  border-color: var(--crm-border);
 }

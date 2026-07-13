@@ -6,7 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from tasks.celery_app import celery_app
+from tasks.celery_app import CELERY_REDIS_AVAILABLE, celery_app
+from tasks.task_router import enqueue_task
+from tasks.task_status import get_task as get_local_task
 from auth.dependencies import get_current_user
 from database import SessionLocal
 import logging
@@ -52,6 +54,19 @@ async def get_task_status(
     - retry: Task will be retried
     """
     try:
+        local_task = get_local_task(task_id)
+        if local_task:
+            return {
+                "task_id": task_id,
+                "status": local_task.get("status", "pending"),
+                "result": local_task.get("result"),
+                "error": local_task.get("error"),
+                "progress": local_task.get("progress", 0),
+            }
+
+        if not CELERY_REDIS_AVAILABLE:
+            raise HTTPException(status_code=404, detail="Task not found")
+
         task = celery_app.AsyncResult(task_id)
         
         if task.state == "PENDING":
@@ -153,20 +168,24 @@ async def sync_gmail_async(
     """
     try:
         from auth.models import User
-        from tasks.email_tasks import sync_gmail_emails
         
         user = db.query(User).filter(User.email == current_user["sub"]).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
-        task = sync_gmail_emails.delay(user.id)
+        task = enqueue_task(
+            "workers.email_tasks.sync_gmail_metadata",
+            "email",
+            {"user_id": user.id, "recent_first": True},
+            user_id=user.id,
+        )
         
-        logger.info(f"📧 Gmail sync submitted for {user.email} -> Task: {task.id}")
+        logger.info("Gmail sync submitted for %s -> Task: %s", user.email, task["id"])
         
         return TaskSubmitResponse(
-            task_id=task.id,
-            status="pending",
-            message=f"Gmail sync queued. Task ID: {task.id}"
+            task_id=task["id"],
+            status=task["status"],
+            message=f"Gmail sync queued. Task ID: {task['id']}"
         )
     except HTTPException:
         raise
@@ -228,7 +247,14 @@ async def tasks_health():
     Check if Celery is running and accessible
     """
     try:
-        # Send a ping to Celery
+        if not CELERY_REDIS_AVAILABLE:
+            return {
+                "status": "degraded",
+                "celery": "local-fallback",
+                "broker": "memory",
+                "message": "Redis is unavailable; safe local task fallback is active."
+            }
+
         celery_app.control.inspect().ping()
         
         return {

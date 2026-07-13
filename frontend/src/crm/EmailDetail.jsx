@@ -2,6 +2,7 @@ import { Bot, Send } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { getEmailBody, requestDraft } from "./api";
+import { formatPktFull } from "./time";
 
 export default function EmailDetail({ email, onTask }) {
   const [body, setBody] = useState("");
@@ -41,6 +42,7 @@ export default function EmailDetail({ email, onTask }) {
         <div className="min-w-0">
           <h3 className="truncate text-xl font-semibold">{email.subject}</h3>
           <p className="text-sm text-slate-400">{email.sender_email}</p>
+          <p className="text-xs text-slate-500">Received {formatPktFull(email.internal_date)} PKT</p>
         </div>
         <button onClick={draft} className="inline-flex items-center gap-2 rounded-md bg-cyan-400 px-3 py-2 text-sm font-medium text-slate-950 hover:bg-cyan-300">
           <Bot size={16} />

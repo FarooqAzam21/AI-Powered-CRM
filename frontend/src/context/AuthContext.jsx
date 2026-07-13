@@ -85,10 +85,11 @@ export const AuthProvider = ({ children }) => {
 
       const userObj = {
         access_token: token,
+        id: decoded.id,
         email: decoded.sub,
         name: decoded.name,
         role: decoded.role,
-        gmail_connected: decoded.gmail_connected
+        gmail_connected: decoded.gmail_connected ?? true,
       };
 
       localStorage.setItem("token", token);

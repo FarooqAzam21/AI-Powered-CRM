@@ -2,12 +2,18 @@ from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 import os
+import requests
+from sqlalchemy import text
 
 import models  # noqa: F401
+import models.ai_memory  # noqa: F401
 from auth.auth_router import router as auth_router
 from auth.ws_auth import verify_ws_user
+from cache.redis_client import MemoryCache, get_cache
 from config.settings import get_settings
 from database import Base, SessionLocal, engine
+from db_indexes import ensure_performance_indexes
+from db_schema import ensure_auth_schema
 from google_auth import router as google_router
 from middleware.rate_limit import RateLimitMiddleware
 from middleware.security import SecurityHeadersMiddleware
@@ -22,6 +28,11 @@ from routers.deals import router as deals_router
 from routers.email_router import router as email_router
 from routers.tasks_router import router as tasks_router
 from routers.ai_router import router as ai_router  # PHASE 5
+from routers.agent_router import router as agent_router  # PHASE 8
+from routers.recommendations_router import router as recommendations_router
+from routers.task_router import router as celery_task_router
+from routers.websocket import router as websocket_router
+from routers.knowledge_router import router as knowledge_router
 from ws_manager.socket import manager
 
 settings = get_settings()
@@ -52,10 +63,17 @@ app.include_router(campaign_router)
 app.include_router(campaigns_phase9_router)
 app.include_router(analytics_router)
 app.include_router(analytics_phase7_router)
+app.include_router(recommendations_router)
+app.include_router(celery_task_router)
+app.include_router(websocket_router)
 app.include_router(tasks_router)
 app.include_router(ai_router)  # PHASE 5 - AI Model Optimization
+app.include_router(agent_router)  # PHASE 8 - Multi-Agent System
+app.include_router(knowledge_router)
 
 Base.metadata.create_all(bind=engine)
+ensure_auth_schema(engine)
+ensure_performance_indexes(engine)
 
 try:
     _db = SessionLocal()
@@ -70,12 +88,44 @@ def ping():
     return {"status": "ok", "message": "AI CRM backend is reachable"}
 
 
+def _dependency_health():
+    checks = {}
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        checks["database"] = {"status": "healthy"}
+    except Exception as exc:
+        checks["database"] = {"status": "unhealthy", "error": str(exc)}
+
+    try:
+        cache = get_cache()
+        cache.setex("health:redis", 10, "ok")
+        checks["redis"] = {
+            "status": "degraded" if isinstance(cache, MemoryCache) else "healthy",
+            "backend": "memory" if isinstance(cache, MemoryCache) else "redis",
+        }
+    except Exception as exc:
+        checks["redis"] = {"status": "unhealthy", "error": str(exc)}
+
+    try:
+        response = requests.get(f"{settings.ollama_base_url.rstrip('/')}/api/tags", timeout=1.5)
+        checks["ollama"] = {"status": "healthy" if response.ok else "unhealthy", "code": response.status_code}
+    except Exception as exc:
+        checks["ollama"] = {"status": "degraded", "error": str(exc)}
+
+    return checks
+
+
 @app.get("/health")
+@app.get("/api/health")
 def health():
+    checks = _dependency_health()
+    status = "healthy" if all(item["status"] == "healthy" for item in checks.values()) else "degraded"
     return {
-        "status": "healthy",
+        "status": status,
         "app": settings.app_name,
         "environment": settings.environment,
+        "checks": checks,
     }
 
 

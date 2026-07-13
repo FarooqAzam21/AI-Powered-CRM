@@ -11,11 +11,13 @@ const Dashboard = lazy(() => import("./crm/Dashboard"));
 const Inbox = lazy(() => import("./crm/Inbox"));
 const Contacts = lazy(() => import("./crm/Contacts"));
 const Pipelines = lazy(() => import("./crm/Pipelines"));
+const Deals = lazy(() => import("./crm/Deals"));
 const Campaigns = lazy(() => import("./crm/Campaigns"));
 const Analytics = lazy(() => import("./crm/Analytics"));
 const LeadProfiles = lazy(() => import("./crm/LeadProfiles"));
 const AIInsights = lazy(() => import("./crm/AIInsights"));
 const AITasks = lazy(() => import("./crm/AITasks"));
+const AIAgentsPage = lazy(() => import("./crm/AIAgentsPage"));
 const Settings = lazy(() => import("./crm/Settings"));
 
 function LoadingShell() {
@@ -48,11 +50,13 @@ function AppContent() {
         <Route path="inbox" element={<Inbox />} />
         <Route path="contacts" element={<Contacts />} />
         <Route path="pipelines" element={<Pipelines />} />
+        <Route path="deals" element={<Deals />} />
         <Route path="campaigns" element={<Campaigns />} />
         <Route path="lead-profiles" element={<LeadProfiles />} />
         <Route path="ai-insights" element={<AIInsights />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="ai-tasks" element={<AITasks />} />
+        <Route path="ai-agents" element={<AIAgentsPage />} />
         <Route path="settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

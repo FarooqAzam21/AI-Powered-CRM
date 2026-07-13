@@ -42,12 +42,20 @@ def send_campaign_email(self, send_id: int):
         
         logger.info(f"📧 Sending email to {send.recipient_email}")
         
-        # Simulate email send (in production, use Gmail API)
-        # from services.email_service import EmailService
-        # email_service = EmailService()
-        # result = email_service.send_email(...)
-        
-        # For now, mark as sent
+        # Send via Gmail API
+        from auth.models import User
+        from gmail_service import send_gmail_message
+
+        user = db.query(User).filter(User.id == campaign.user_id).first()
+        if user and user.gmail_connected:
+            body = send.personalized_body or campaign.template
+            subject = send.personalized_subject or campaign.subject
+            result = send_gmail_message(user, send.recipient_email, subject, body)
+            if not result:
+                raise RuntimeError("Gmail API send failed")
+        else:
+            logger.warning("Gmail not connected — marking send as sent (simulated)")
+
         CampaignService.mark_sent(db, send_id)
         logger.info(f"✅ Email sent: {send_id} to {send.recipient_email}")
         

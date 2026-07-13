@@ -20,3 +20,8 @@ python-multipart
 pillow
 alembic
 psycopg2-binary
+chromadb
+PyPDF2
+python-docx
+pandas
+jinja2

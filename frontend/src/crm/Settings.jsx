@@ -1,12 +1,11 @@
 import { useAuth } from "../context/AuthContext";
-import API from "../srevices/api";
+import { startGoogleAuth } from "../hooks/useGoogleAuth";
 
 export default function Settings() {
   const { user } = useAuth();
 
   async function connectGoogle() {
-    const { data } = await API.get("/google/login");
-    window.location.href = data.url;
+    await startGoogleAuth("login");
   }
 
   return (

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from database import Base
@@ -229,7 +229,30 @@ class EmailMetadata(Base, TimestampMixin):
     body_cache_key = Column(String, nullable=True)
     ai_status = Column(String, default="queued", index=True)
 
-    __table_args__ = (UniqueConstraint("user_id", "gmail_message_id", name="uq_email_meta_user_gmail"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "gmail_message_id", name="uq_email_meta_user_gmail"),
+        Index("ix_email_meta_user_date", "user_id", "internal_date"),
+        Index("ix_email_meta_user_sender", "user_id", "sender_email"),
+        Index("ix_email_meta_user_status", "user_id", "ai_status"),
+    )
+
+
+class EmailClassificationRule(Base, TimestampMixin):
+    __tablename__ = "email_classification_rules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    category = Column(String, index=True, nullable=False)
+    sender_domain = Column(String, index=True, default="")
+    sender_email = Column(String, index=True, default="")
+    keywords = Column(Text, default="[]")
+    source = Column(String, default="manual")
+    match_count = Column(Integer, default=0)
+
+    __table_args__ = (
+        Index("ix_email_rule_user_domain", "user_id", "sender_domain"),
+        Index("ix_email_rule_user_category", "user_id", "category"),
+    )
 
 
 class GmailSyncCursor(Base, TimestampMixin):

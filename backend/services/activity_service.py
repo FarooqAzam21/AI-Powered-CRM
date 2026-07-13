@@ -38,10 +38,9 @@ class ActivityTimelineService:
                 user_id=user_id,
                 contact_id=contact_id,
                 type=activity_type,
-                subject=subject,
-                description=description,
-                direction=direction,
-                status="completed"
+                title=subject or activity_type.replace("_", " ").title(),
+                description=description or "",
+                status="completed",
             )
             db.add(activity)
             db.commit()
@@ -72,12 +71,12 @@ class ActivityTimelineService:
                 )
             ).order_by(desc(Activity.created_at)).limit(limit).all()
             
-            emails = db.query(Email).filter(
+            interactions = db.query(Interaction).filter(
                 and_(
-                    Email.contact_id == contact_id,
-                    Email.received_at >= cutoff_date
+                    Interaction.contact_id == contact_id,
+                    Interaction.occurred_at >= cutoff_date
                 )
-            ).order_by(desc(Email.received_at)).all()
+            ).order_by(desc(Interaction.occurred_at)).all()
             
             # Combine activities and emails
             timeline = []
@@ -95,25 +94,23 @@ class ActivityTimelineService:
                     "timestamp": activity.created_at,
                     "icon": type_info["icon"],
                     "color": type_info["color"],
-                    "title": activity.subject or activity_type.replace("_", " ").title(),
+                    "title": activity.title or activity_type.replace("_", " ").title(),
                     "description": activity.description,
-                    "direction": activity.direction
                 })
             
-            for email in emails:
-                email_type = "email_received" if email.direction != "outbound" else "email_sent"
+            for item in interactions:
+                email_type = "email_received" if item.direction != "outbound" else "email_sent"
                 type_info = ActivityTimelineService.ACTIVITY_TYPES.get(email_type)
                 
                 timeline.append({
-                    "id": f"email_{email.id}",
+                    "id": f"interaction_{item.id}",
                     "type": email_type,
-                    "timestamp": email.received_at,
+                    "timestamp": item.occurred_at,
                     "icon": type_info["icon"],
                     "color": type_info["color"],
-                    "title": email.subject,
-                    "description": email.body[:200] if email.body else "",
-                    "category": email.category,
-                    "sentiment": email.sentiment
+                    "title": item.subject,
+                    "description": item.snippet[:200] if item.snippet else "",
+                    "sentiment": item.sentiment
                 })
             
             # Sort by timestamp descending
@@ -142,10 +139,10 @@ class ActivityTimelineService:
                 )
             ).all()
             
-            emails = db.query(Email).filter(
+            interactions = db.query(Interaction).filter(
                 and_(
-                    Email.user_id == user_id,
-                    Email.received_at >= cutoff_date
+                    Interaction.user_id == user_id,
+                    Interaction.occurred_at >= cutoff_date
                 )
             ).all()
             
@@ -156,16 +153,16 @@ class ActivityTimelineService:
                 activity_counts[atype] = activity_counts.get(atype, 0) + 1
             
             email_counts = {
-                "email_sent": len([e for e in emails if e.direction == "outbound"]),
-                "email_received": len([e for e in emails if e.direction != "outbound"])
+                "email_sent": len([e for e in interactions if e.direction == "outbound"]),
+                "email_received": len([e for e in interactions if e.direction != "outbound"])
             }
             
             summary = {
                 "period_days": days,
-                "total_activities": len(activities) + len(emails),
+                "total_activities": len(activities) + len(interactions),
                 "activities_by_type": activity_counts,
                 "email_stats": email_counts,
-                "avg_daily_activity": (len(activities) + len(emails)) / days if days > 0 else 0,
+                "avg_daily_activity": (len(activities) + len(interactions)) / days if days > 0 else 0,
                 "contacts_engaged": len(set(a.contact_id for a in activities if a.contact_id))
             }
             
@@ -219,7 +216,7 @@ class ActivityTimelineService:
                 result.append({
                     "type": activity.type,
                     "date": activity.created_at,
-                    "description": activity.description or activity.subject
+                    "description": activity.description or activity.title
                 })
             
             return result
@@ -250,7 +247,7 @@ class ActivityTimelineService:
                     "type": activity.type,
                     "timestamp": activity.created_at,
                     "contact": contact.email if contact else "Unknown",
-                    "description": activity.description or activity.subject,
+                    "description": activity.description or activity.title,
                     "time_ago": ActivityTimelineService._time_ago(activity.created_at)
                 })
             

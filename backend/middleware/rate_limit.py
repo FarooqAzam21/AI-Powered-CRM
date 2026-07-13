@@ -16,9 +16,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app, requests_per_minute: int = 60):
         super().__init__(app)
-        self.requests_per_minute = requests_per_minute
+        self.requests_per_minute = get_settings().rate_limit_requests_per_minute or requests_per_minute
         self.window_seconds = 60
-        self.protected_prefixes = ("/auth/", "/api/v1/ai/")
+        self.protected_prefixes = ("/auth/", "/google/", "/email/", "/api/v1/ai/", "/tasks/")
 
     def _client_key(self, request: Request) -> str:
         forwarded = request.headers.get("x-forwarded-for")

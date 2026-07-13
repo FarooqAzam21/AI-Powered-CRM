@@ -4,7 +4,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 
 class Settings:
@@ -26,8 +27,9 @@ class Settings:
     google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
     google_redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/google/callback")
 
+    ai_provider = os.getenv("AI_PROVIDER", "ollama")
     ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    ollama_model = os.getenv("OLLAMA_MODEL", "tinyllama")
+    ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:1.5b")
     ollama_context = int(os.getenv("OLLAMA_CONTEXT", "1024"))
     ollama_idle_unload_seconds = int(os.getenv("OLLAMA_IDLE_UNLOAD_SECONDS", "180"))
     ai_cache_ttl_seconds = int(os.getenv("AI_CACHE_TTL_SECONDS", "86400"))
@@ -35,6 +37,7 @@ class Settings:
     gmail_page_size = int(os.getenv("GMAIL_PAGE_SIZE", "10"))
     gmail_sync_window_days = int(os.getenv("GMAIL_SYNC_WINDOW_DAYS", "14"))
     campaign_send_rate_per_minute = int(os.getenv("CAMPAIGN_SEND_RATE_PER_MINUTE", "2"))
+    rate_limit_requests_per_minute = int(os.getenv("RATE_LIMIT_REQUESTS_PER_MINUTE", "60"))
 
     log_level = os.getenv("LOG_LEVEL", "INFO")
 

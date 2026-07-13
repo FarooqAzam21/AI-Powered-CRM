@@ -174,7 +174,7 @@ export default function Campaigns() {
                 </div>
               )}
 
-              <div className="h-56">
+              <div className="h-56 min-h-[14rem] min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chart}>
                     <XAxis dataKey="name" stroke="#94a3b8" />

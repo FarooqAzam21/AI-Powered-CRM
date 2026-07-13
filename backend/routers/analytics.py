@@ -5,7 +5,7 @@ REST endpoints for advanced analytics and insights
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from auth.dependencies import get_current_user
+from auth.dependencies import get_current_user_model
 from auth.models import User
 from services.winloss_service import WinLossService
 from services.sales_cycle_service import SalesCycleService
@@ -32,7 +32,7 @@ async def record_deal_outcome(
     deal_id: int,
     outcome: str,  # 'won' or 'lost'
     competitor: Optional[str] = None,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Record a deal outcome (won/lost) and analyze it"""
@@ -61,7 +61,7 @@ async def record_deal_outcome(
 @router.get("/win-loss-summary")
 async def get_win_loss_summary(
     days: int = Query(90),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Get win/loss analysis summary"""
@@ -77,7 +77,7 @@ async def get_win_loss_summary(
 
 @router.get("/winning-factors")
 async def get_winning_factors(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Get top winning factors"""
@@ -92,7 +92,7 @@ async def get_winning_factors(
 
 @router.get("/losing-factors")
 async def get_losing_factors(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Get top losing factors"""
@@ -107,7 +107,7 @@ async def get_losing_factors(
 
 @router.get("/competitor-analysis")
 async def get_competitor_analysis(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Analyze losses by competitor"""
@@ -125,7 +125,7 @@ async def get_competitor_analysis(
 @router.post("/sales-cycles/calculate")
 async def calculate_sales_cycle_metrics(
     period_type: str = Query("monthly"),  # monthly, quarterly, yearly
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Calculate sales cycle metrics for a period"""
@@ -154,7 +154,7 @@ async def calculate_sales_cycle_metrics(
 
 @router.get("/sales-cycles")
 async def get_sales_cycle_metrics(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Get latest sales cycle metrics"""
@@ -173,7 +173,7 @@ async def get_sales_cycle_metrics(
 @router.get("/velocity")
 async def get_sales_velocity(
     days: int = Query(30),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Get sales velocity (deals/revenue per day)"""
@@ -188,7 +188,7 @@ async def get_sales_velocity(
 
 @router.get("/bottlenecks")
 async def get_bottlenecks(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Identify pipeline bottlenecks"""
@@ -207,7 +207,7 @@ async def get_bottlenecks(
 async def record_forecast(
     month: str,  # YYYY-MM
     forecasted_revenue: float,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Record a monthly forecast"""
@@ -227,7 +227,7 @@ async def record_forecast(
 @router.post("/forecast/{month}/close")
 async def close_forecast_month(
     month: str,  # YYYY-MM
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Close out a month and calculate forecast accuracy"""
@@ -249,7 +249,7 @@ async def close_forecast_month(
 
 @router.get("/forecast-accuracy")
 async def get_forecast_accuracy(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Get forecast accuracy trends"""
@@ -264,7 +264,7 @@ async def get_forecast_accuracy(
 
 @router.get("/forecast-drivers")
 async def get_forecast_drivers(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Identify forecast accuracy drivers"""
@@ -283,7 +283,7 @@ async def get_forecast_drivers(
 async def create_territory(
     territory_name: str,
     territory_type: str = Query("geographic"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Create or update territory metrics"""
@@ -307,7 +307,7 @@ async def create_territory(
 
 @router.get("/territories")
 async def list_territories(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Compare all territories"""
@@ -322,7 +322,7 @@ async def list_territories(
 
 @router.get("/opportunity-analysis")
 async def get_opportunity_analysis(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Get territory opportunity analysis"""
@@ -337,7 +337,7 @@ async def get_opportunity_analysis(
 
 @router.get("/risk-analysis")
 async def get_risk_analysis(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Get territory risk analysis"""
@@ -352,7 +352,7 @@ async def get_risk_analysis(
 
 @router.get("/optimization-recommendations")
 async def get_optimization_recommendations(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_model),
     db: Session = Depends(get_db)
 ):
     """Get territory optimization recommendations"""

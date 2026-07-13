@@ -1,157 +1,188 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import RedirectResponse
-from sqlalchemy.orm import Session
-import os
-import requests
-import uuid
 from datetime import timedelta
 from urllib.parse import urlencode
-from dotenv import load_dotenv
+import uuid
+import logging
+
+import requests
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import RedirectResponse
+from sqlalchemy.orm import Session
+
+from auth.auth_manager import create_user, get_db
+from auth.jwt import create_access_token, get_password_hash
+from auth.models import User
 from config.settings import get_settings
 from utils.security import encrypt_secret
 
-load_dotenv()
-
-from auth.auth_manager import get_db, create_user
-from auth.models import User
-from auth.jwt import create_access_token
-
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/google", tags=["Google Integration"])
-
-CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 settings = get_settings()
-REDIRECT_URI = settings.google_redirect_uri
 
-@router.get("/login")
-def login(db: Session = Depends(get_db)):
-    """
-    Generates the Google OAuth URL. 
-    If in simulation mode, redirects directly to the callback.
-    """
-    # 1. Simulation Mode Check
-    if not CLIENT_SECRET or CLIENT_SECRET == "your_client_secret_here":
-        print("DEBUG: Simulation Login Detected. Bypassing Google...")
-        # Redirect to our own callback with a mock code
-        return {"url": f"http://localhost:8000/google/callback?code=simulated_code&state=sim_state"}
 
-    if not CLIENT_ID:
-        raise HTTPException(500, "Google Client ID not configured")
-        
-    # Added 'profile' and 'email' scopes to get user info
-    scope = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send openid email profile"
-    
+def _oauth_configured() -> bool:
+    return bool(
+        settings.google_client_id
+        and settings.google_client_secret
+        and settings.google_client_secret not in {"", "your_client_secret_here"}
+    )
+
+
+def _build_auth_url(intent: str = "login") -> str:
+    scope = (
+        "openid email profile "
+        "https://www.googleapis.com/auth/gmail.readonly "
+        "https://www.googleapis.com/auth/gmail.send"
+    )
     params = {
-        "client_id": CLIENT_ID,
-        "redirect_uri": REDIRECT_URI,
+        "client_id": settings.google_client_id,
+        "redirect_uri": settings.google_redirect_uri,
         "response_type": "code",
         "scope": scope,
         "access_type": "offline",
         "prompt": "consent",
-        "state": str(uuid.uuid4()) 
+        "state": f"{intent}:{uuid.uuid4()}",
     }
-    
-    url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
-    return {"url": url}
+    return f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
+
+
+def _issue_app_token(user: User, gmail_connected: bool = True) -> str:
+    return create_access_token(
+        {
+            "sub": user.email,
+            "id": user.id,
+            "name": user.name,
+            "role": user.role,
+            "gmail_connected": gmail_connected,
+        },
+        timedelta(days=7),
+    )
+
+
+def _redirect_frontend(path: str) -> RedirectResponse:
+    base = settings.frontend_url.rstrip("/")
+    return RedirectResponse(f"{base}{path}", status_code=303)
+
+
+@router.get("/config")
+def google_config():
+    return {
+        "enabled": _oauth_configured() or not settings.google_client_secret,
+        "simulation_mode": not _oauth_configured(),
+        "redirect_uri": settings.google_redirect_uri,
+    }
+
+
+@router.get("/login")
+def google_login(intent: str = Query("login", pattern="^(login|signup)$")):
+    """Start Google OAuth — creates account on first sign-in (signup) or links Gmail on login."""
+    if not settings.google_client_id:
+        raise HTTPException(500, "GOOGLE_CLIENT_ID is not configured in .env")
+
+    if not _oauth_configured():
+        return {"url": f"{settings.google_redirect_uri}?code=simulated_code&state={intent}:sim"}
+
+    return {"url": _build_auth_url(intent)}
+
+
+@router.get("/signup")
+def google_signup():
+    """Alias for Google registration — same OAuth flow, auto-creates user if new."""
+    return google_login(intent="signup")
+
 
 @router.get("/callback")
-def callback(code: str, state: str, db: Session = Depends(get_db)):
+def google_callback(code: str, state: str, db: Session = Depends(get_db)):
     try:
-        print(f"DEBUG: Callback received. Code: {code[:10]}...")
+        intent = state.split(":", 1)[0] if state else "login"
+        logger.info("Google callback intent=%s", intent)
 
-        # 1. Simulation Mode (If secret is missing)
-        if not CLIENT_SECRET or CLIENT_SECRET == "your_client_secret_here":
-            print("DEBUG: Simulation Mode Active.")
+        if not _oauth_configured() or code == "simulated_code":
             sim_email = "testuser@gmail.com"
-            sim_user = db.query(User).filter(User.email == sim_email).first()
-            
-            if not sim_user:
-                print(f"DEBUG: Creating simulated user {sim_email}")
-                sim_user = create_user({
-                    "name": "Test User",
-                    "email": sim_email,
-                    "password": "simulated_password",
-                    "role": "user",
-                    "is_verified": True,
-                    "gmail_connected": True
-                })
+            user = db.query(User).filter(User.email == sim_email).first()
+            if not user:
+                user = create_user(
+                    {
+                        "name": "Test User",
+                        "email": sim_email,
+                        "password": get_password_hash(uuid.uuid4().hex),
+                        "role": "user",
+                        "is_verified": True,
+                        "gmail_connected": True,
+                    }
+                )
             else:
-                # Ensure connected state
-                sim_user.gmail_connected = True
+                user.gmail_connected = True
                 db.commit()
+                db.refresh(user)
 
-            # Generate Token for this valid user
-            token = create_access_token(
-                {"sub": sim_user.email, "name": sim_user.name, "role": sim_user.role, "gmail_connected": True}, 
-                timedelta(days=1)
-            )
-            return RedirectResponse(f"{settings.frontend_url}/auth/callback?token={token}", status_code=303)
+            token = _issue_app_token(user)
+            return _redirect_frontend(f"/auth/callback?token={token}&provider=google&intent={intent}")
 
-        # 2. Exchange Code for Tokens
-        token_url = "https://oauth2.googleapis.com/token"
-        data = {
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
-            "code": code,
-            "grant_type": "authorization_code",
-            "redirect_uri": REDIRECT_URI
-        }
-        
-        print("DEBUG: Exchanging token with Google...")
-        res = requests.post(token_url, data=data)
-        if res.status_code != 200:
-            print(f"DEBUG: Google Token Error: {res.text}")
-            return RedirectResponse("http://localhost:5173/login?error=token_failed", status_code=303)
-            
-        tokens = res.json()
+        token_res = requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "client_id": settings.google_client_id,
+                "client_secret": settings.google_client_secret,
+                "code": code,
+                "grant_type": "authorization_code",
+                "redirect_uri": settings.google_redirect_uri,
+            },
+            timeout=20,
+        )
+        if token_res.status_code != 200:
+            logger.error("Google token error: %s", token_res.text)
+            return _redirect_frontend("/login?error=token_failed")
+
+        tokens = token_res.json()
         access_token = tokens.get("access_token")
         refresh_token = tokens.get("refresh_token")
-        id_token = tokens.get("id_token") # JWT from Google containing profile
 
-        # 3. Get User Profile
-        profile_res = requests.get("https://www.googleapis.com/oauth2/v1/userinfo", headers={"Authorization": f"Bearer {access_token}"})
+        profile_res = requests.get(
+            "https://www.googleapis.com/oauth2/v1/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=20,
+        )
         if profile_res.status_code != 200:
-             print("DEBUG: Failed to fetch user profile")
-             return RedirectResponse("http://localhost:5173/login?error=profile_failed", status_code=303)
-        
+            return _redirect_frontend("/login?error=profile_failed")
+
         profile = profile_res.json()
         email = profile.get("email")
-        name = profile.get("name", "Google User")
-        
-        print(f"DEBUG: Authenticated Google User: {email}")
+        name = profile.get("name") or email.split("@")[0]
 
-        # 4. DB Upsert
+        if not email:
+            return _redirect_frontend("/login?error=no_email")
+
         user = db.query(User).filter(User.email == email).first()
-        
-        if not user:
-            print("DEBUG: Creating new user from Google Login")
-            user = create_user({
-                "name": name,
-                "email": email,
-                "password": "google_oauth_user", 
-                "role": "user",
-                "is_verified": True, 
-                "gmail_connected": True,
-                "google_access_token": encrypt_secret(access_token),
-                "google_refresh_token": encrypt_secret(refresh_token)
-            })
+        is_new = user is None
+
+        if is_new:
+            user = create_user(
+                {
+                    "name": name,
+                    "email": email,
+                    "password": get_password_hash(uuid.uuid4().hex),
+                    "role": "user",
+                    "is_verified": True,
+                    "gmail_connected": True,
+                    "google_access_token": encrypt_secret(access_token),
+                    "google_refresh_token": encrypt_secret(refresh_token or ""),
+                }
+            )
         else:
-            print("DEBUG: Updating existing user tokens")
+            user.name = user.name or name
             user.google_access_token = encrypt_secret(access_token)
             if refresh_token:
                 user.google_refresh_token = encrypt_secret(refresh_token)
             user.gmail_connected = True
+            user.is_verified = True
             db.commit()
+            db.refresh(user)
 
-        # 5. Generate App Session Token
-        app_token = create_access_token(
-            {"sub": user.email, "name": user.name, "role": user.role, "gmail_connected": True},
-            timedelta(days=7)
+        app_token = _issue_app_token(user)
+        redirect_intent = "signup" if is_new and intent == "signup" else "login"
+        return _redirect_frontend(
+            f"/auth/callback?token={app_token}&provider=google&intent={redirect_intent}&new={'1' if is_new else '0'}"
         )
-        
-        # 6. Redirect to Frontend Callback
-        return RedirectResponse(f"{settings.frontend_url}/auth/callback?token={app_token}", status_code=303)
-
-    except Exception as e:
-        print(f"CRITICAL ERROR in /google/callback: {str(e)}")
-        return RedirectResponse("http://localhost:5173/login?error=internal_error", status_code=303)
+    except Exception as exc:
+        logger.exception("Google callback failed: %s", exc)
+        return _redirect_frontend("/login?error=internal_error")

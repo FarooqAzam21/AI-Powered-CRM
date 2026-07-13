@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from auth.jwt import create_access_token, get_password_hash, verify_password
 from auth.auth_manager import find_user_by_email, create_user, get_db
+from auth.dependencies import get_current_user
 from auth.models import User
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -40,7 +41,7 @@ def register(data: Register, db: Session = Depends(get_db)):
 
     # Auto-login after registration
     token = create_access_token(
-        {"sub": user.email, "role": user.role},
+        {"sub": user.email, "id": user.id, "name": user.name, "role": user.role, "gmail_connected": user.gmail_connected},
         timedelta(days=1)
     )
 
@@ -74,7 +75,7 @@ def login(data: Login):
     print(f"DEBUG: Login successful for {data.email}")
 
     token = create_access_token(
-        {"sub": user.email, "role": user.role},
+        {"sub": user.email, "id": user.id, "name": user.name, "role": user.role, "gmail_connected": user.gmail_connected},
         timedelta(days=1)
     )
 
@@ -86,6 +87,21 @@ def login(data: Login):
         "role": user.role,
         "gmail_connected": user.gmail_connected
     }
+
+
+@router.get("/me")
+def me(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == current_user["sub"]).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+    return {
+        "id": user.id,
+        "email": user.email,
+        "name": user.name,
+        "role": user.role,
+        "gmail_connected": user.gmail_connected,
+    }
+
 
 @router.get("/verify")
 def verify_email(token: str, db: Session = Depends(get_db)):
