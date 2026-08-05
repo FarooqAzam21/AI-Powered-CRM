@@ -1,28 +1,51 @@
 import { Menu, Moon, Sun, X } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { BarChart3, Bot, Briefcase, Brain, DollarSign, Inbox, LayoutDashboard, Megaphone, Settings, UserCircle, Users } from "lucide-react";
+import { BarChart3, Bot, Briefcase, Brain, Code2, DollarSign, FileText, Globe, Inbox, Key, LayoutDashboard, Megaphone, Settings, UserCircle, Users, Webhook } from "lucide-react";
 
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { useRole } from "../security/permissionHooks";
+import { checkPermissions } from "../security/permissionUtils";
+import { PERMISSIONS } from "../security/permissions";
+import WorkspaceSelector from "./WorkspaceSelector";
 
 const nav = [
-  ["Dashboard", "/dashboard", LayoutDashboard],
-  ["Inbox", "/inbox", Inbox],
-  ["Contacts", "/contacts", Users],
-  ["Pipelines", "/pipelines", Briefcase],
-  ["Deals", "/deals", DollarSign],
-  ["Campaigns", "/campaigns", Megaphone],
-  ["Lead Profiles", "/lead-profiles", UserCircle],
-  ["AI Insights", "/ai-insights", Brain],
-  ["Analytics", "/analytics", BarChart3],
-  ["AI Tasks", "/ai-tasks", Bot],
-  ["AI Agents", "/ai-agents", Brain],
-  ["Settings", "/settings", Settings],
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, permission: PERMISSIONS.DASHBOARD_VIEW },
+  { label: "Inbox", href: "/inbox", icon: Inbox, permission: PERMISSIONS.INBOX_VIEW },
+  { label: "Contacts", href: "/contacts", icon: Users, permission: PERMISSIONS.CONTACTS_VIEW },
+  { label: "Pipelines", href: "/pipelines", icon: Briefcase, permission: PERMISSIONS.PIPELINES_VIEW },
+  { label: "Deals", href: "/deals", icon: DollarSign, permission: PERMISSIONS.DEALS_VIEW },
+  { label: "Campaigns", href: "/campaigns", icon: Megaphone, permission: PERMISSIONS.CAMPAIGNS_VIEW },
+  { label: "Lead Profiles", href: "/lead-profiles", icon: UserCircle, permission: PERMISSIONS.CONTACTS_VIEW },
+  { label: "AI Insights", href: "/ai-insights", icon: Brain, permission: PERMISSIONS.AI_ANALYTICS },
+  { label: "Analytics", href: "/analytics", icon: BarChart3, permission: PERMISSIONS.ANALYTICS_VIEW },
+  { label: "AI Tasks", href: "/ai-tasks", icon: Bot, permission: PERMISSIONS.AI_REPLY },
+  { label: "AI Agents", href: "/ai-agents", icon: Brain, permission: PERMISSIONS.AI_SETTINGS },
+  { label: "Hiring", href: "/hiring", icon: Briefcase, permission: PERMISSIONS.HIRING_VIEW },
+  { label: "Candidates", href: "/candidates", icon: Users, permission: PERMISSIONS.CANDIDATES_VIEW },
+  { 
+    label: "Settings", 
+    href: "/settings", 
+    icon: Settings, 
+    permission: [
+      PERMISSIONS.SETTINGS_WORKSPACE, 
+      PERMISSIONS.SETTINGS_SECURITY, 
+      PERMISSIONS.SETTINGS_AUDIT_LOGS
+    ] 
+  },
 ];
 
-function NavItems({ onNavigate }) {
-  return nav.map(([label, href, Icon]) => (
+const devNav = [
+  { label: "Dev Console", href: "/developer",          icon: Code2 },
+  { label: "API Keys",    href: "/developer/keys",      icon: Key },
+  { label: "Webhooks",   href: "/developer/webhooks",  icon: Webhook },
+  { label: "API Explorer",href: "/developer/explorer",  icon: Globe },
+  { label: "Docs",       href: "/developer/docs",      icon: FileText },
+];
+
+function NavItems({ items, onNavigate }) {
+  return items.map(({ label, href, icon: Icon }) => (
     <NavLink
       key={href}
       to={href}
@@ -41,8 +64,13 @@ function NavItems({ onNavigate }) {
 
 export default function CRMLayout() {
   const { user, logout } = useAuth();
+  const role = useRole();
   const { isDark, toggleTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const filteredNav = useMemo(() => {
+    return nav.filter(item => checkPermissions(role, item.permission));
+  }, [role]);
 
   return (
     <div className="crm-shell min-h-screen bg-[#080b12] text-slate-100">
@@ -53,8 +81,18 @@ export default function CRMLayout() {
             <h1 className="text-lg font-semibold">Automation Hub</h1>
           </div>
         </div>
+        <WorkspaceSelector />
         <nav className="space-y-1 p-3">
-          <NavItems />
+          <NavItems items={filteredNav} />
+          {/* Developer Portal — Admin only */}
+          {['Admin', 'Workspace Admin', 'Super Admin'].includes(role) && (
+            <>
+              <div style={{ margin: '16px 6px 8px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 12 }}>
+                <p style={{ fontSize: 10, fontWeight: 700, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '0 6px', marginBottom: 6 }}>Developer</p>
+                <NavItems items={devNav} />
+              </div>
+            </>
+          )}
         </nav>
       </aside>
 
@@ -69,7 +107,7 @@ export default function CRMLayout() {
               </button>
             </div>
             <nav className="space-y-1">
-              <NavItems onNavigate={() => setMobileOpen(false)} />
+              <NavItems items={filteredNav} onNavigate={() => setMobileOpen(false)} />
             </nav>
           </aside>
         </div>
@@ -101,7 +139,7 @@ export default function CRMLayout() {
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 z-20 flex justify-around border-t border-white/10 bg-[#0c111d]/95 px-2 py-2 backdrop-blur lg:hidden">
-        {nav.slice(0, 5).map(([label, href, Icon]) => (
+        {filteredNav.slice(0, 5).map(({ label, href, icon: Icon }) => (
           <NavLink key={href} to={href} className={({ isActive }) => `flex flex-col items-center gap-1 px-2 py-1 text-[10px] ${isActive ? "text-cyan-300" : "text-slate-500"}`}>
             <Icon size={18} />
             {label.split(" ")[0]}

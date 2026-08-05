@@ -8,9 +8,15 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from datetime import datetime
 import logging
+from services.webhook_service import trigger_webhook_event
 
 from database import SessionLocal
-from auth.dependencies import get_current_user
+from auth.dependencies import (
+    require_viewer,
+    require_security_analyst,
+    require_workspace_admin,
+    AuthContext
+)
 from auth.models import User
 from models.crm import Contact, Lead, Activity, Interaction, EmailMetadata, CustomerProfile
 from services.contact_service import ContactService
@@ -38,9 +44,9 @@ class ContactResponse(BaseModel):
     id: int
     email: str
     name: Optional[str]
-    company: Optional[str]
-    score: float
-    last_interaction_at: Optional[datetime]
+    company: Optional[str] = None
+    score: float = 0.0
+    last_interaction_at: Optional[datetime] = None
     interaction_count: int
 
 class ContactDetailResponse(ContactResponse):
@@ -61,7 +67,7 @@ def get_db():
 
 @router.get("", response_model=List[ContactResponse])
 async def list_contacts(
-    current_user: dict = Depends(get_current_user),
+    current_user: AuthContext = Depends(require_viewer),
     db: Session = Depends(get_db),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
@@ -69,13 +75,14 @@ async def list_contacts(
 ):
     """List all contacts for user"""
     try:
-        user = db.query(User).filter(User.email == current_user["sub"]).first()
+        user = current_user.user
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
         contacts = ContactService.list_contacts(
             db=db,
             user_id=user.id,
+            workspace_id=current_user.workspace_id,
             skip=skip,
             limit=limit,
             search=search
@@ -88,18 +95,19 @@ async def list_contacts(
 @router.get("/{contact_id}", response_model=ContactDetailResponse)
 async def get_contact(
     contact_id: int,
-    current_user: dict = Depends(get_current_user),
+    current_user: AuthContext = Depends(require_viewer),
     db: Session = Depends(get_db)
 ):
     """Get specific contact details"""
     try:
-        user = db.query(User).filter(User.email == current_user["sub"]).first()
+        user = current_user.user
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
         contact = db.query(Contact).filter(
             Contact.id == contact_id,
-            Contact.user_id == user.id
+            Contact.user_id == user.id,
+            Contact.workspace_id == current_user.workspace_id
         ).first()
         
         if not contact:
@@ -110,7 +118,7 @@ async def get_contact(
             email=contact.email,
             name=contact.name,
             company=contact.company,
-            score=contact.score,
+            score=getattr(contact, "score", 0.0),
             last_interaction_at=contact.last_interaction_at,
             interaction_count=contact.interaction_count or 0,
             title=contact.title,
@@ -129,12 +137,12 @@ async def get_contact(
 @router.post("", response_model=ContactResponse)
 async def create_contact(
     data: ContactCreate,
-    current_user: dict = Depends(get_current_user),
+    current_user: AuthContext = Depends(require_security_analyst),
     db: Session = Depends(get_db)
 ):
     """Create new contact"""
     try:
-        user = db.query(User).filter(User.email == current_user["sub"]).first()
+        user = current_user.user
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
@@ -143,22 +151,30 @@ async def create_contact(
             user_id=user.id,
             email=data.email,
             name=data.name,
-            company=data.company
+            company=data.company,
+            workspace_id=current_user.workspace_id
         )
         
         if not result["is_new"]:
             raise HTTPException(status_code=409, detail="Contact already exists")
         
         contact = db.query(Contact).filter(Contact.id == result["id"]).first()
-        return ContactResponse(
+        response = ContactResponse(
             id=contact.id,
             email=contact.email,
             name=contact.name,
             company=contact.company,
-            score=contact.score,
+            score=getattr(contact, "score", 0.0),
             last_interaction_at=contact.last_interaction_at,
             interaction_count=contact.interaction_count or 0
         )
+        # Fire webhook event for external integrations
+        if user.workspace_id:
+            trigger_webhook_event(db, user.workspace_id, "contact.created", {
+                "id": contact.id, "email": contact.email,
+                "name": contact.name, "company": contact.company
+            })
+        return response
     except HTTPException:
         raise
     except Exception as e:
@@ -169,18 +185,19 @@ async def create_contact(
 async def update_contact(
     contact_id: int,
     data: ContactUpdate,
-    current_user: dict = Depends(get_current_user),
+    current_user: AuthContext = Depends(require_security_analyst),
     db: Session = Depends(get_db)
 ):
     """Update contact"""
     try:
-        user = db.query(User).filter(User.email == current_user["sub"]).first()
+        user = current_user.user
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
         contact = db.query(Contact).filter(
             Contact.id == contact_id,
-            Contact.user_id == user.id
+            Contact.user_id == user.id,
+            Contact.workspace_id == current_user.workspace_id
         ).first()
         
         if not contact:
@@ -202,6 +219,12 @@ async def update_contact(
         db.commit()
         db.refresh(contact)
         
+        # Fire webhook event for external integrations
+        if user.workspace_id:
+            trigger_webhook_event(db, user.workspace_id, "contact.updated", {
+                "id": contact.id, "email": contact.email,
+                "name": contact.name, "company": contact.company
+            })
         logger.info(f"✅ Contact updated: {contact.email}")
         
         return ContactResponse(
@@ -209,7 +232,7 @@ async def update_contact(
             email=contact.email,
             name=contact.name,
             company=contact.company,
-            score=contact.score,
+            score=getattr(contact, "score", 0.0),
             last_interaction_at=contact.last_interaction_at,
             interaction_count=contact.interaction_count or 0
         )
@@ -223,18 +246,19 @@ async def update_contact(
 @router.delete("/{contact_id}")
 async def delete_contact(
     contact_id: int,
-    current_user: dict = Depends(get_current_user),
+    current_user: AuthContext = Depends(require_workspace_admin),
     db: Session = Depends(get_db)
 ):
     """Delete contact"""
     try:
-        user = db.query(User).filter(User.email == current_user["sub"]).first()
+        user = current_user.user
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
         contact = db.query(Contact).filter(
             Contact.id == contact_id,
-            Contact.user_id == user.id
+            Contact.user_id == user.id,
+            Contact.workspace_id == current_user.workspace_id
         ).first()
         
         if not contact:
@@ -256,20 +280,21 @@ async def delete_contact(
 @router.get("/{contact_id}/interactions")
 async def get_contact_interactions(
     contact_id: int,
-    current_user: dict = Depends(get_current_user),
+    current_user: AuthContext = Depends(require_viewer),
     db: Session = Depends(get_db),
     skip: int = Query(0),
     limit: int = Query(10)
 ):
     """Get interaction history for contact"""
     try:
-        user = db.query(User).filter(User.email == current_user["sub"]).first()
+        user = current_user.user
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
         contact = db.query(Contact).filter(
             Contact.id == contact_id,
-            Contact.user_id == user.id
+            Contact.user_id == user.id,
+            Contact.workspace_id == current_user.workspace_id
         ).first()
         
         if not contact:

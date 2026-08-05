@@ -16,20 +16,20 @@ def _user(db, token):
 
 @router.get("/contacts")
 def contacts(limit: int = 50, offset: int = 0, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    user = _user(db, current_user)
-    return db.query(Contact).filter(Contact.user_id == user.id).order_by(Contact.last_interaction_at.desc().nullslast()).offset(offset).limit(min(limit, 100)).all()
+    workspace_id = current_user.get("workspace_id")
+    return db.query(Contact).filter(Contact.workspace_id == workspace_id).order_by(Contact.last_interaction_at.desc().nullslast()).offset(offset).limit(min(limit, 100)).all()
 
 
 @router.get("/leads")
 def leads(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    user = _user(db, current_user)
-    return db.query(Lead).filter(Lead.user_id == user.id).order_by(Lead.score.desc()).limit(50).all()
+    workspace_id = current_user.get("workspace_id")
+    return db.query(Lead).filter(Lead.workspace_id == workspace_id).order_by(Lead.score.desc()).limit(50).all()
 
 
 @router.get("/pipeline")
 def pipeline(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    user = _user(db, current_user)
-    deals = db.query(Deal).filter(Deal.user_id == user.id).all()
+    workspace_id = current_user.get("workspace_id")
+    deals = db.query(Deal).filter(Deal.workspace_id == workspace_id).all()
     stages = {}
     for deal in deals:
         stages.setdefault(deal.stage, {"count": 0, "value": 0})
@@ -40,19 +40,19 @@ def pipeline(current_user: dict = Depends(get_current_user), db: Session = Depen
 
 @router.get("/activities")
 def activities(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    user = _user(db, current_user)
-    return db.query(Activity).filter(Activity.user_id == user.id).order_by(Activity.created_at.desc()).limit(50).all()
+    workspace_id = current_user.get("workspace_id")
+    return db.query(Activity).filter(Activity.workspace_id == workspace_id).order_by(Activity.created_at.desc()).limit(50).all()
 
 
 @router.get("/contacts/{contact_id}/interactions")
 def contact_interactions(contact_id: int, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    user = _user(db, current_user)
-    contact = db.query(Contact).filter(Contact.id == contact_id, Contact.user_id == user.id).first()
+    workspace_id = current_user.get("workspace_id")
+    contact = db.query(Contact).filter(Contact.id == contact_id, Contact.workspace_id == workspace_id).first()
     if not contact:
         raise HTTPException(404, "Contact not found")
     return (
         db.query(Interaction)
-        .filter(Interaction.user_id == user.id, Interaction.contact_id == contact_id)
+        .filter(Interaction.workspace_id == workspace_id, Interaction.contact_id == contact_id)
         .order_by(Interaction.occurred_at.desc())
         .limit(100)
         .all()
@@ -61,8 +61,8 @@ def contact_interactions(contact_id: int, current_user: dict = Depends(get_curre
 
 @router.get("/contacts/{contact_id}/profile")
 def contact_profile(contact_id: int, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    user = _user(db, current_user)
-    contact = db.query(Contact).filter(Contact.id == contact_id, Contact.user_id == user.id).first()
+    workspace_id = current_user.get("workspace_id")
+    contact = db.query(Contact).filter(Contact.id == contact_id, Contact.workspace_id == workspace_id).first()
     if not contact:
         raise HTTPException(404, "Contact not found")
     profile = db.query(CustomerProfile).filter(CustomerProfile.contact_id == contact_id).first()
@@ -73,8 +73,8 @@ def contact_profile(contact_id: int, current_user: dict = Depends(get_current_us
 
 @router.post("/contacts/{contact_id}/profile/refresh")
 def refresh_contact_profile(contact_id: int, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    user = _user(db, current_user)
-    contact = db.query(Contact).filter(Contact.id == contact_id, Contact.user_id == user.id).first()
+    workspace_id = current_user.get("workspace_id")
+    contact = db.query(Contact).filter(Contact.id == contact_id, Contact.workspace_id == workspace_id).first()
     if not contact:
         raise HTTPException(404, "Contact not found")
     profile = CustomerProfileService.generate_profile(db, contact_id, use_cache=False)
@@ -85,6 +85,6 @@ def refresh_contact_profile(contact_id: int, current_user: dict = Depends(get_cu
 
 @router.get("/insights")
 def insights(limit: int = 50, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    user = _user(db, current_user)
+    workspace_id = current_user.get("workspace_id")
     limit = min(max(limit, 1), 100)
-    return db.query(AIInsight).filter(AIInsight.user_id == user.id).order_by(AIInsight.created_at.desc()).limit(limit).all()
+    return db.query(AIInsight).filter(AIInsight.workspace_id == workspace_id).order_by(AIInsight.created_at.desc()).limit(limit).all()

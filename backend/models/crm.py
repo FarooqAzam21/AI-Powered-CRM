@@ -15,6 +15,7 @@ class Contact(Base, TimestampMixin):
     __tablename__ = "crm_contacts"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     email = Column(String, index=True, nullable=False)
     name = Column(String, default="")
@@ -35,6 +36,7 @@ class Lead(Base, TimestampMixin):
     __tablename__ = "crm_leads"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     contact_id = Column(Integer, ForeignKey("crm_contacts.id"), index=True, nullable=False)
     score = Column(Float, default=0.0, index=True)
@@ -52,6 +54,7 @@ class Interaction(Base, TimestampMixin):
     __tablename__ = "crm_interactions"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     contact_id = Column(Integer, ForeignKey("crm_contacts.id"), index=True, nullable=False)
     gmail_message_id = Column(String, index=True, nullable=True)
@@ -69,6 +72,7 @@ class Activity(Base, TimestampMixin):
     __tablename__ = "crm_activities"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     contact_id = Column(Integer, ForeignKey("crm_contacts.id"), index=True, nullable=True)
     type = Column(String, index=True)
@@ -82,6 +86,7 @@ class Note(Base, TimestampMixin):
     __tablename__ = "crm_notes"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     contact_id = Column(Integer, ForeignKey("crm_contacts.id"), index=True, nullable=True)
     body = Column(Text, nullable=False)
@@ -91,6 +96,7 @@ class Deal(Base, TimestampMixin):
     __tablename__ = "crm_deals"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     contact_id = Column(Integer, ForeignKey("crm_contacts.id"), index=True, nullable=True)
     title = Column(String, nullable=False)
@@ -151,6 +157,7 @@ class CustomerProfile(Base, TimestampMixin):
     __tablename__ = "crm_customer_profiles"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True, nullable=True)
     contact_id = Column(Integer, ForeignKey("crm_contacts.id"), unique=True, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     summary = Column(Text, default="")
@@ -177,6 +184,7 @@ class Campaign(Base, TimestampMixin):
     __table_args__ = {'extend_existing': True}
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     name = Column(String, nullable=False)
     subject = Column(String, nullable=False)
@@ -192,6 +200,7 @@ class CampaignRecipient(Base, TimestampMixin):
     __tablename__ = "campaign_recipients"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True, nullable=True)
     campaign_id = Column(Integer, ForeignKey("campaigns.id"), index=True, nullable=False)
     contact_id = Column(Integer, ForeignKey("crm_contacts.id"), nullable=True)
     email = Column(String, index=True, nullable=False)
@@ -205,6 +214,7 @@ class AIInsight(Base, TimestampMixin):
     __tablename__ = "ai_insights"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     contact_id = Column(Integer, ForeignKey("crm_contacts.id"), nullable=True)
     insight_type = Column(String, index=True)
@@ -216,6 +226,7 @@ class EmailMetadata(Base, TimestampMixin):
     __tablename__ = "email_metadata"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     gmail_message_id = Column(String, index=True, nullable=False)
     thread_id = Column(String, index=True, nullable=True)
@@ -241,6 +252,7 @@ class EmailClassificationRule(Base, TimestampMixin):
     __tablename__ = "email_classification_rules"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), index=True, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
     category = Column(String, index=True, nullable=False)
     sender_domain = Column(String, index=True, default="")

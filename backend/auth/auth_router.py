@@ -41,7 +41,15 @@ def register(data: Register, db: Session = Depends(get_db)):
 
     # Auto-login after registration
     token = create_access_token(
-        {"sub": user.email, "id": user.id, "name": user.name, "role": user.role, "gmail_connected": user.gmail_connected},
+        {
+            "sub": user.email,
+            "id": user.id,
+            "name": user.name,
+            "role": user.role,
+            "gmail_connected": user.gmail_connected,
+            "workspace_id": user.workspace_id,
+            "organization_id": user.organization_id,
+        },
         timedelta(days=1)
     )
 
@@ -75,7 +83,15 @@ def login(data: Login):
     print(f"DEBUG: Login successful for {data.email}")
 
     token = create_access_token(
-        {"sub": user.email, "id": user.id, "name": user.name, "role": user.role, "gmail_connected": user.gmail_connected},
+        {
+            "sub": user.email,
+            "id": user.id,
+            "name": user.name,
+            "role": user.role,
+            "gmail_connected": user.gmail_connected,
+            "workspace_id": user.workspace_id,
+            "organization_id": user.organization_id,
+        },
         timedelta(days=1)
     )
 

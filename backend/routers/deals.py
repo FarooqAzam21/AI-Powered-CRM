@@ -14,6 +14,7 @@ from services.deal_service import DealService
 from services.activity_service import ActivityTimelineService
 from services.profile_service import CustomerProfileService
 from services.recommendation_service import RecommendationEngine
+from services.webhook_service import trigger_webhook_event
 from typing import List, Optional
 from pydantic import BaseModel
 
@@ -80,7 +81,8 @@ async def create_deal(
             name=deal.name,
             value=deal.value,
             stage=deal.stage,
-            expected_close=deal.expected_close_date
+            expected_close=deal.expected_close_date,
+            workspace_id=current_user.workspace_id
         )
         
         # Record activity
@@ -92,6 +94,13 @@ async def create_deal(
             subject=f"Deal Created: {deal.name}",
             description=f"New deal: ${deal.value}"
         )
+        
+        # Fire webhook event
+        if hasattr(current_user, 'workspace_id') and current_user.workspace_id:
+            trigger_webhook_event(db, current_user.workspace_id, "deal.created", {
+                "id": new_deal.id, "name": new_deal.name,
+                "value": new_deal.value, "stage": new_deal.stage
+            })
         
         db.close()
         return new_deal
@@ -113,6 +122,7 @@ async def list_deals(
         deals = DealService.get_user_deals(
             db=db,
             user_id=current_user.id,
+            workspace_id=current_user.workspace_id,
             status=status,
             stage=stage,
             limit=limit
@@ -131,7 +141,7 @@ async def get_pipeline_summary(
     """Get pipeline summary with stats"""
     try:
         db = SessionLocal()
-        summary = DealService.get_pipeline_summary(db=db, user_id=current_user.id)
+        summary = DealService.get_pipeline_summary(db=db, user_id=current_user.id, workspace_id=current_user.workspace_id)
         db.close()
         return summary
         
@@ -147,7 +157,7 @@ async def get_deal(
     """Get single deal details"""
     try:
         db = SessionLocal()
-        deal = db.query(Deal).filter(Deal.id == deal_id).first()
+        deal = db.query(Deal).filter(Deal.id == deal_id, Deal.workspace_id == current_user.workspace_id).first()
         
         if not deal or deal.user_id != current_user.id:
             raise HTTPException(status_code=404, detail="Deal not found")
@@ -173,7 +183,7 @@ async def update_deal(
     """Update deal details"""
     try:
         db = SessionLocal()
-        deal = db.query(Deal).filter(Deal.id == deal_id).first()
+        deal = db.query(Deal).filter(Deal.id == deal_id, Deal.workspace_id == current_user.workspace_id).first()
         
         if not deal or deal.user_id != current_user.id:
             raise HTTPException(status_code=404, detail="Deal not found")
@@ -201,8 +211,15 @@ async def update_deal(
         deal.updated_at = datetime.utcnow()
         db.commit()
         db.refresh(deal)
-        db.close()
         
+        # Fire webhook event
+        if hasattr(current_user, 'workspace_id') and current_user.workspace_id:
+            trigger_webhook_event(db, current_user.workspace_id, "deal.updated", {
+                "id": deal.id, "name": deal.name,
+                "value": deal.value, "stage": deal.stage
+            })
+        
+        db.close()
         return deal
         
     except HTTPException:
@@ -221,7 +238,7 @@ async def close_deal(
     """Close deal as won or lost"""
     try:
         db = SessionLocal()
-        deal = db.query(Deal).filter(Deal.id == deal_id).first()
+        deal = db.query(Deal).filter(Deal.id == deal_id, Deal.workspace_id == current_user.workspace_id).first()
         
         if not deal or deal.user_id != current_user.id:
             raise HTTPException(status_code=404, detail="Deal not found")
@@ -231,6 +248,13 @@ async def close_deal(
         
         if reason:
             deal.close_reason = reason
+        
+        # Fire webhook event
+        event_name = "deal.won" if won else "deal.lost"
+        if hasattr(current_user, 'workspace_id') and current_user.workspace_id:
+            trigger_webhook_event(db, current_user.workspace_id, event_name, {
+                "id": deal_id, "stage": stage, "reason": reason or ""
+            })
         
         db.commit()
         db.close()
@@ -250,7 +274,7 @@ async def get_overdue_deals(
     """Get overdue deals"""
     try:
         db = SessionLocal()
-        deals = DealService.get_overdue_deals(db=db, user_id=current_user.id)
+        deals = DealService.get_overdue_deals(db=db, user_id=current_user.id, workspace_id=current_user.workspace_id)
         
         result = []
         for deal in deals:
@@ -283,7 +307,7 @@ async def add_deal_activity(
     """Add activity to deal"""
     try:
         db = SessionLocal()
-        deal = db.query(Deal).filter(Deal.id == deal_id).first()
+        deal = db.query(Deal).filter(Deal.id == deal_id, Deal.workspace_id == current_user.workspace_id).first()
         
         if not deal or deal.user_id != current_user.id:
             raise HTTPException(status_code=404, detail="Deal not found")
@@ -318,7 +342,7 @@ async def get_revenue_forecast(
     """Get revenue forecast based on deal pipeline"""
     try:
         db = SessionLocal()
-        summary = DealService.get_pipeline_summary(db=db, user_id=current_user.id)
+        summary = DealService.get_pipeline_summary(db=db, user_id=current_user.id, workspace_id=current_user.workspace_id)
         
         forecast = {
             "total_pipeline": summary.get("total_pipeline_value", 0),

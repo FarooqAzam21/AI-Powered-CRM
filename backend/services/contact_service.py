@@ -22,11 +22,18 @@ class ContactService:
         email: str,
         name: Optional[str] = None,
         company: Optional[str] = None,
+        workspace_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         try:
             existing = (
                 db.query(Contact)
-                .filter(and_(Contact.user_id == user_id, Contact.email == email.lower()))
+                .filter(
+                    and_(
+                        Contact.user_id == user_id,
+                        Contact.workspace_id == workspace_id,
+                        Contact.email == email.lower(),
+                    )
+                )
                 .first()
             )
             if existing:
@@ -39,6 +46,7 @@ class ContactService:
                 }
             new_contact = Contact(
                 user_id=user_id,
+                workspace_id=workspace_id,
                 email=email.lower(),
                 name=name or email.split("@")[0],
                 company=company or "",
@@ -60,11 +68,11 @@ class ContactService:
             raise
 
     @staticmethod
-    def get_contact_by_email(db: Session, user_id: int, email: str) -> Optional[Dict[str, Any]]:
+    def get_contact_by_email(db: Session, user_id: int, email: str, workspace_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
         try:
             contact = (
                 db.query(Contact)
-                .filter(and_(Contact.user_id == user_id, Contact.email == email.lower()))
+                .filter(and_(Contact.user_id == user_id, Contact.workspace_id == workspace_id, Contact.email == email.lower()))
                 .first()
             )
             if not contact:
@@ -84,9 +92,9 @@ class ContactService:
             return None
 
     @staticmethod
-    def update_contact_interaction(db: Session, contact_id: int, interaction_type: str = "email") -> bool:
+    def update_contact_interaction(db: Session, contact_id: int, interaction_type: str = "email", workspace_id: Optional[int] = None) -> bool:
         try:
-            contact = db.query(Contact).filter(Contact.id == contact_id).first()
+            contact = db.query(Contact).filter(Contact.id == contact_id, Contact.workspace_id == workspace_id).first()
             if not contact:
                 return False
             contact.last_interaction_at = datetime.utcnow()
@@ -110,12 +118,13 @@ class ContactService:
     def list_contacts(
         db: Session,
         user_id: int,
+        workspace_id: Optional[int] = None,
         skip: int = 0,
         limit: int = 20,
         search: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         try:
-            query = db.query(Contact).filter(Contact.user_id == user_id)
+            query = db.query(Contact).filter(Contact.user_id == user_id, Contact.workspace_id == workspace_id)
             if search:
                 query = query.filter(
                     or_(

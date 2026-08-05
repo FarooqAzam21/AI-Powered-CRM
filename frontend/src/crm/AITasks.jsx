@@ -19,6 +19,8 @@ import {
 } from "./api";
 import useApiResource from "./useApiResource";
 import { formatPktDateTime, utcTime } from "./time";
+import { useCan } from "../security/permissionHooks";
+import { PERMISSIONS } from "../security/permissions";
 
 const PAGE_SIZE = 20;
 
@@ -26,6 +28,11 @@ export default function AITasks() {
   const health = useApiResource(getAIHealth, []);
   const stats = useApiResource(getAIStats, []);
   const celery = useApiResource(getCeleryHealth, []);
+
+  // Permission hooks
+  const canReply = useCan(PERMISSIONS.AI_REPLY);
+  const canClassify = useCan(PERMISSIONS.AI_CLASSIFY);
+  const canSettings = useCan(PERMISSIONS.SETTINGS_WORKSPACE);
 
   const [taskId, setTaskId] = useState("");
   const [task, setTask] = useState(null);
@@ -290,16 +297,18 @@ export default function AITasks() {
 
           <div className="flex flex-wrap gap-2">
             <button
-              disabled={!selectedEmail || busy === "classify-selected"}
+              disabled={!canClassify || !selectedEmail || busy === "classify-selected"}
               onClick={runClassifySelected}
-              className="rounded-md bg-cyan-400 px-3 py-2 text-sm font-medium text-slate-950 disabled:opacity-50"
+              title={!canClassify ? "Requires AI Classify permission (Sales or Admin)" : "Classify Selected"}
+              className="rounded-md bg-cyan-400 px-3 py-2 text-sm font-medium text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Classify Selected
             </button>
             <button
-              disabled={busy === "classify-batch"}
+              disabled={!canClassify || busy === "classify-batch"}
               onClick={runBatchClassify}
-              className="rounded-md border border-white/10 px-3 py-2 text-sm hover:bg-white/5 disabled:opacity-50"
+              title={!canClassify ? "Requires AI Classify permission (Sales or Admin)" : "Classify 10 Unclassified"}
+              className="rounded-md border border-white/10 px-3 py-2 text-sm hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Classify 10 Unclassified
             </button>
@@ -308,14 +317,16 @@ export default function AITasks() {
           <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
             <input
               value={manualCategory}
+              disabled={!canClassify}
               onChange={(event) => setManualCategory(event.target.value)}
-              className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-cyan-400"
+              className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-cyan-400 disabled:opacity-40"
               placeholder="Category, e.g. Job"
             />
             <button
-              disabled={!selectedEmail || busy === "manual-classify"}
+              disabled={!canClassify || !selectedEmail || busy === "manual-classify"}
               onClick={runManualClassify}
-              className="rounded-md border border-emerald-400/30 px-3 py-2 text-sm text-emerald-200 hover:bg-emerald-400/10 disabled:opacity-50"
+              title={!canClassify ? "Requires AI Classify permission (Sales or Admin)" : "Save Label + Learn"}
+              className="rounded-md border border-emerald-400/30 px-3 py-2 text-sm text-emerald-200 hover:bg-emerald-400/10 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Save Label + Learn
             </button>
@@ -368,7 +379,12 @@ export default function AITasks() {
               </option>
             ))}
           </select>
-          <button disabled={busy === "reply" || !selectedContext} onClick={runReply} className="rounded-md bg-cyan-400 px-3 py-2 text-sm font-medium text-slate-950 disabled:opacity-50">
+          <button 
+            disabled={!canReply || busy === "reply" || !selectedContext} 
+            onClick={runReply} 
+            title={!canReply ? "Requires AI Reply permission (Sales, Support, or Admin)" : "Generate Reply"}
+            className="rounded-md bg-cyan-400 px-3 py-2 text-sm font-medium text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             Generate Reply
           </button>
           {selectedEmailLoading && <p className="mt-3 text-sm text-slate-400">Loading selected email details...</p>}
@@ -390,7 +406,12 @@ export default function AITasks() {
             placeholder="Email body or snippet"
             className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm"
           />
-          <button disabled={busy === "classify"} onClick={runClassify} className="rounded-md border border-white/10 px-3 py-2 text-sm hover:bg-white/5 disabled:opacity-50">
+          <button 
+            disabled={!canClassify || busy === "classify"} 
+            onClick={runClassify} 
+            title={!canClassify ? "Requires AI Classify permission (Sales or Admin)" : "Test classification"}
+            className="rounded-md border border-white/10 px-3 py-2 text-sm hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             Test
           </button>
         </div>
@@ -399,7 +420,12 @@ export default function AITasks() {
       <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
         <h3 className="mb-3 text-sm font-medium text-slate-300">Async Task Queue</h3>
         <div className="flex flex-wrap gap-2">
-          <button disabled={busy === "sync"} onClick={runSync} className="rounded-md border border-white/10 px-3 py-2 text-sm hover:bg-white/5 disabled:opacity-50">
+          <button 
+            disabled={!canSettings || busy === "sync"} 
+            onClick={runSync} 
+            title={!canSettings ? "Requires Workspace Admin permission to sync" : "Queue Gmail Sync"}
+            className="rounded-md border border-white/10 px-3 py-2 text-sm hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             Queue Gmail Sync
           </button>
         </div>

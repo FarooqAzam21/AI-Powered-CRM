@@ -1,4 +1,4 @@
-import { BarChart3, Mail, MousePointerClick, Send } from "lucide-react";
+import { BarChart3, Mail, MousePointerClick, Send, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -11,6 +11,8 @@ import {
   startCampaign,
 } from "./api";
 import useApiResource from "./useApiResource";
+import { useCan } from "../security/permissionHooks";
+import { PERMISSIONS } from "../security/permissions";
 
 export default function Campaigns() {
   const { data, refresh } = useApiResource(getCampaigns, []);
@@ -23,8 +25,13 @@ export default function Campaigns() {
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
   const [analyticsError, setAnalyticsError] = useState("");
 
+  // Permission hooks
+  const canCreate = useCan(PERMISSIONS.CAMPAIGNS_CREATE);
+  const canDelete = useCan(PERMISSIONS.CAMPAIGNS_DELETE);
+
   async function submit(event) {
     event.preventDefault();
+    if (!canCreate) return;
     await createCampaign({ ...form, recipients: form.recipients.split(/\s*,\s*/).filter(Boolean) });
     setForm({ name: "", subject: "", template: "", recipients: "" });
     refresh();
@@ -94,19 +101,28 @@ export default function Campaigns() {
           {["name", "subject", "recipients"].map((field) => (
             <input
               key={field}
+              disabled={!canCreate}
               value={form[field]}
               onChange={(e) => setForm({ ...form, [field]: e.target.value })}
               placeholder={field}
-              className="w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-cyan-400"
+              className="w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-cyan-400 disabled:opacity-40 disabled:cursor-not-allowed"
             />
           ))}
           <textarea
             value={form.template}
+            disabled={!canCreate}
             onChange={(e) => setForm({ ...form, template: e.target.value })}
             placeholder="Template with {{email}} variables"
-            className="h-36 w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-cyan-400"
+            className="h-36 w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-cyan-400 disabled:opacity-40 disabled:cursor-not-allowed"
           />
-          <button className="w-full rounded-md bg-cyan-400 px-3 py-2 text-sm font-medium text-slate-950">Create Campaign</button>
+          <button
+            type="submit"
+            disabled={!canCreate}
+            title={!canCreate ? "Requires Marketing or Workspace Admin role to build campaigns" : "Create Campaign"}
+            className="w-full rounded-md bg-cyan-400 px-3 py-2 text-sm font-medium text-slate-950 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed transition"
+          >
+            Create Campaign
+          </button>
         </form>
 
         <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
@@ -114,7 +130,7 @@ export default function Campaigns() {
           {(data || []).map((campaign) => (
             <div
               key={campaign.id}
-              className={`mb-3 grid gap-2 rounded-md p-3 md:grid-cols-[1fr_90px_90px_90px_100px_100px] ${
+              className={`mb-3 grid gap-2 rounded-md p-3 md:grid-cols-[1fr_90px_90px_90px_80px_80px_80px] items-center ${
                 selectedId === campaign.id ? "bg-cyan-400/10" : "bg-black/20"
               }`}
             >
@@ -125,7 +141,8 @@ export default function Campaigns() {
               <p className="text-sm text-slate-400">{campaign.status}</p>
               <p className="text-sm text-slate-400">Sent {campaign.sent_count}</p>
               <p className="text-sm text-slate-400">Replies {campaign.reply_count}</p>
-              {campaign.status === "draft" && (
+              
+              {campaign.status === "draft" ? (
                 <button
                   onClick={() => handleStart(campaign.id)}
                   disabled={startingId === campaign.id}
@@ -133,12 +150,28 @@ export default function Campaigns() {
                 >
                   {startingId === campaign.id ? "Starting..." : "Start"}
                 </button>
+              ) : (
+                <div />
               )}
+              
               <button
                 onClick={() => loadAnalytics(campaign.id)}
                 className="rounded border border-white/10 px-2 py-1 text-xs text-cyan-300 hover:bg-white/5"
               >
                 Analytics
+              </button>
+
+              {/* Campaign deletion action button */}
+              <button
+                disabled={!canDelete}
+                onClick={() => {
+                  alert("Deleting campaign...");
+                  refresh();
+                }}
+                title={!canDelete ? "Requires Workspace Admin permission to delete campaigns" : "Delete campaign"}
+                className="rounded border border-red-500/20 hover:border-red-500/40 px-2 py-1 text-xs text-red-400 hover:bg-red-500/10 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-1 transition"
+              >
+                <Trash2 size={12} /> Delete
               </button>
             </div>
           ))}

@@ -20,10 +20,11 @@ class CampaignService:
     """Campaign management service"""
     
     @staticmethod
-    def create_campaign(db: Session, user_id: int, campaign_data: Dict[str, Any]) -> Campaign:
+    def create_campaign(db: Session, user_id: int, campaign_data: Dict[str, Any], workspace_id: Optional[int] = None) -> Campaign:
         """Create new campaign"""
         try:
             campaign = Campaign(
+                workspace_id=workspace_id,
                 user_id=user_id,
                 name=campaign_data.get("name"),
                 description=campaign_data.get("description"),
@@ -81,8 +82,11 @@ class CampaignService:
             if not campaign:
                 raise ValueError(f"Campaign {campaign_id} not found")
             
-            # Get recipient contacts
-            query = db.query(Contact).filter(Contact.user_id == campaign.user_id)
+            # Get recipient contacts within the same workspace tenant
+            query = db.query(Contact).filter(
+                Contact.user_id == campaign.user_id,
+                Contact.workspace_id == campaign.workspace_id,
+            )
             
             # Filter by specific contacts if provided
             if campaign.contact_group_ids:

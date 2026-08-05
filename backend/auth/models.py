@@ -4,18 +4,272 @@ from database import Base
 from datetime import datetime
 import enum
 
-# =================== USER & AUTH ===================
+# =================== WORKSPACES & AUTH ===================
+class Organization(Base):
+    __tablename__ = "organizations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    slug = Column(String, unique=True, index=True, nullable=False)
+    domain = Column(String, nullable=True)
+    logo_url = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    workspaces = relationship("Workspace", back_populates="organization", cascade="all, delete-orphan")
+    departments = relationship("Department", back_populates="organization", cascade="all, delete-orphan")
+    settings = relationship("OrganizationSettings", back_populates="organization", uselist=False, cascade="all, delete-orphan")
+
+
+class OrganizationSettings(Base):
+    __tablename__ = "organization_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, unique=True, index=True)
+    timezone = Column(String, default="UTC")
+    language = Column(String, default="en")
+    currency = Column(String, default="USD")
+    date_format = Column(String, default="YYYY-MM-DD")
+    theme = Column(String, default="light")
+    password_policy = Column(JSON, default=dict)
+    session_timeout_minutes = Column(Integer, default=60)
+    mfa_required = Column(Boolean, default=False)
+    notification_preferences = Column(JSON, default=dict)
+    security_policies = Column(JSON, default=dict)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    organization = relationship("Organization", back_populates="settings")
+
+
+class Workspace(Base):
+    __tablename__ = "workspaces"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    name = Column(String, nullable=False)
+    slug = Column(String, index=True, nullable=True)
+    type = Column(String, default="Team")  # Personal, Team, Enterprise
+    storage_quota_mb = Column(Integer, default=5000)
+    ai_monthly_quota = Column(Integer, default=10000)
+    brand_logo = Column(String, nullable=True)
+    brand_color = Column(String, default="#6366f1")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    organization = relationship("Organization", back_populates="workspaces")
+    users = relationship("User", back_populates="workspace", cascade="all, delete-orphan")
+    members = relationship("WorkspaceMember", back_populates="workspace", cascade="all, delete-orphan")
+    api_keys = relationship("APIKey", back_populates="workspace", cascade="all, delete-orphan")
+    teams = relationship("Team", back_populates="workspace", cascade="all, delete-orphan")
+    invitations = relationship("WorkspaceInvitation", back_populates="workspace", cascade="all, delete-orphan")
+    settings = relationship("WorkspaceSetting", back_populates="workspace", uselist=False, cascade="all, delete-orphan")
+    quota = relationship("WorkspaceQuota", back_populates="workspace", uselist=False, cascade="all, delete-orphan")
+    usage = relationship("WorkspaceUsage", back_populates="workspace", cascade="all, delete-orphan")
+
+
+class Department(Base):
+    __tablename__ = "departments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    name = Column(String, nullable=False)
+    code = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    organization = relationship("Organization", back_populates="departments")
+    teams = relationship("Team", back_populates="department", cascade="all, delete-orphan")
+
+
+class Team(Base):
+    __tablename__ = "teams"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False)
+    department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
+    name = Column(String, nullable=False)
+    leader_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    workspace = relationship("Workspace", back_populates="teams")
+    department = relationship("Department", back_populates="teams")
+
+
+class WorkspaceMember(Base):
+    __tablename__ = "workspace_members"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    role = Column(String, default="Viewer")
+    status = Column(String, default="active")
+    invited_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    joined_at = Column(DateTime, default=datetime.utcnow)
+    last_active = Column(DateTime, default=datetime.utcnow)
+    permissions = Column(JSON, default=list)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    workspace = relationship("Workspace", back_populates="members")
+    user = relationship("User", back_populates="workspace_members")
+
+    __table_args__ = ({"extend_existing": True},)
+
+
+class WorkspaceInvitation(Base):
+    __tablename__ = "workspace_invitations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False)
+    inviter_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    email = Column(String, nullable=False, index=True)
+    role = Column(String, default="Viewer")
+    token = Column(String, unique=True, index=True, nullable=False)
+    status = Column(String, default="pending")  # pending, accepted, expired, canceled
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+
+    workspace = relationship("Workspace", back_populates="invitations")
+
+
+class WorkspaceSetting(Base):
+    __tablename__ = "workspace_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False, unique=True, index=True)
+    ai_provider = Column(String, default="ollama")
+    ai_model = Column(String, default="qwen2.5:1.5b")
+    smtp_host = Column(String, nullable=True)
+    smtp_port = Column(Integer, nullable=True)
+    timezone = Column(String, default="UTC")
+    language = Column(String, default="en")
+    currency = Column(String, default="USD")
+    date_format = Column(String, default="YYYY-MM-DD")
+    theme = Column(String, default="light")
+    password_policy = Column(JSON, default=dict)
+    session_timeout_minutes = Column(Integer, default=60)
+    mfa_required = Column(Boolean, default=False)
+    notification_preferences = Column(JSON, default=dict)
+    security_policies = Column(JSON, default=dict)
+    feature_flags = Column(JSON, default=dict)
+    custom_domain = Column(String, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    workspace = relationship("Workspace", back_populates="settings")
+
+
+class WorkspaceQuota(Base):
+    __tablename__ = "workspace_quotas"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False, unique=True, index=True)
+    emails_synced = Column(Integer, default=0)
+    ai_requests = Column(Integer, default=0)
+    storage_used_mb = Column(Integer, default=0)
+    knowledge_base_size_mb = Column(Integer, default=0)
+    campaign_emails = Column(Integer, default=0)
+    api_requests = Column(Integer, default=0)
+    webhook_deliveries = Column(Integer, default=0)
+    workflow_runs = Column(Integer, default=0)
+    agent_executions = Column(Integer, default=0)
+    users_count = Column(Integer, default=0)
+    teams_count = Column(Integer, default=0)
+    departments_count = Column(Integer, default=0)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    workspace = relationship("Workspace", back_populates="quota")
+
+
+class WorkspaceUsage(Base):
+    __tablename__ = "workspace_usage"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False, index=True)
+    metric_name = Column(String, nullable=False, index=True)
+    metric_value = Column(Integer, default=0)
+    period_start = Column(DateTime, nullable=True, index=True)
+    period_end = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    workspace = relationship("Workspace", back_populates="usage")
+
+class APIKey(Base):
+    __tablename__ = "api_keys"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    key = Column(String, unique=True, index=True, nullable=True) # plaintext legacy key
+    hashed_key = Column(String, unique=True, index=True, nullable=True)
+    key_prefix = Column(String, nullable=True)
+    name = Column(String, nullable=False)
+    is_active = Column(Boolean, default=True)
+    status = Column(String, default="active") # active, revoked, expired
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)
+    last_used_at = Column(DateTime, nullable=True)
+    last_ip = Column(String, nullable=True)
+    permissions = Column(JSON, default=list) # scopes list, e.g. ["contacts.read"]
+    rate_limit = Column(Integer, default=60) # per minute
+    daily_limit = Column(Integer, default=1000) # per day
+    requests_today = Column(Integer, default=0)
+    description = Column(String, nullable=True)
+
+    workspace = relationship("Workspace", back_populates="api_keys")
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
+    action = Column(String, nullable=False)
+    resource = Column(String, nullable=False)
+    status = Column(String, nullable=False) # e.g., "DENIED", "ALLOWED"
+    details = Column(Text, nullable=True)
+    ip_address = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
+    department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
+    manager_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True)
     password = Column(String, nullable=False)
-    role = Column(String, default="user")
+    role = Column(String, default="Viewer") # Super Admin, Workspace Admin, Security Analyst, Viewer
+    job_title = Column(String, nullable=True)
+    status = Column(String, default="active") # active, deactivated, suspended
     
     is_verified = Column(Boolean, default=False)
     verification_token = Column(String, nullable=True)
+
+    workspace_members = relationship("WorkspaceMember", back_populates="user", cascade="all, delete-orphan")
+    workspace = relationship("Workspace", foreign_keys=[workspace_id], back_populates="users")
+
+
+class UserGroup(Base):
+    __tablename__ = "user_groups"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False)
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    permissions = Column(JSON, default=list)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class WorkspacePolicy(Base):
+    __tablename__ = "workspace_policies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False)
+    name = Column(String, nullable=False)
+    policy_type = Column(String, nullable=False)  # e.g., security, data_retention, ai_usage
+    rules = Column(JSON, default=dict)
+    is_enforced = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
     # Google OAuth
     google_access_token = Column(String, nullable=True)
@@ -23,6 +277,7 @@ class User(Base):
     gmail_connected = Column(Boolean, default=False)
     
     # Relationships
+    workspace = relationship("Workspace", back_populates="users")
     contacts = relationship("auth.models.Contact", back_populates="user", cascade="all, delete-orphan")
     leads = relationship("auth.models.Lead", back_populates="user", cascade="all, delete-orphan")
     activities = relationship("auth.models.Activity", back_populates="user", cascade="all, delete-orphan")
@@ -38,6 +293,7 @@ class Contact(Base):
     __tablename__ = "contacts"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     email = Column(String, nullable=False, index=True)
     name = Column(String)
@@ -68,6 +324,7 @@ class Lead(Base):
     __tablename__ = "leads"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     contact_id = Column(Integer, ForeignKey("contacts.id"))
     
@@ -105,6 +362,7 @@ class Activity(Base):
     __tablename__ = "activities"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     contact_id = Column(Integer, ForeignKey("contacts.id"))
     
@@ -127,6 +385,7 @@ class Email(Base):
     __tablename__ = "emails"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     contact_id = Column(Integer, ForeignKey("contacts.id"), nullable=True)
     
@@ -163,6 +422,7 @@ class Notification(Base):
     __tablename__ = "notifications"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     
     title = Column(String, nullable=False)
@@ -184,6 +444,7 @@ class Deal(Base):
     __tablename__ = "deals"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     contact_id = Column(Integer, ForeignKey("contacts.id"))
     
@@ -222,6 +483,7 @@ class ContactRelationship(Base):
     __tablename__ = "contact_relationships"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     from_contact_id = Column(Integer, ForeignKey("contacts.id"), nullable=False)
     to_contact_id = Column(Integer, ForeignKey("contacts.id"), nullable=False)
@@ -248,6 +510,7 @@ class AIRecommendation(Base):
     __tablename__ = "ai_recommendations"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     contact_id = Column(Integer, ForeignKey("contacts.id"), nullable=True)
     deal_id = Column(Integer, ForeignKey("deals.id"), nullable=True)
@@ -287,6 +550,7 @@ class WinLossAnalysis(Base):
     __tablename__ = "win_loss_analysis"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     deal_id = Column(Integer, ForeignKey("deals.id"), nullable=False)
     
@@ -321,6 +585,7 @@ class SalesCycleMetrics(Base):
     __tablename__ = "sales_cycle_metrics"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     
     # Period
@@ -354,6 +619,7 @@ class ForecastAccuracy(Base):
     __tablename__ = "forecast_accuracy"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     
     # Forecast Period
@@ -389,6 +655,7 @@ class TerritoryMetrics(Base):
     __tablename__ = "territory_metrics"
 
     id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     
     # Territory Definition
@@ -429,6 +696,32 @@ class TerritoryMetrics(Base):
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+# =================== DEVELOPER & WEBHOOKS ===================
+class WebhookSubscription(Base):
+    __tablename__ = "webhook_subscriptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False)
+    url = Column(String, nullable=False)
+    secret_key = Column(String, nullable=False)
+    events = Column(JSON, default=list) # e.g., ["lead.created"]
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class WebhookDelivery(Base):
+    __tablename__ = "webhook_deliveries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False)
+    subscription_id = Column(Integer, ForeignKey("webhook_subscriptions.id"), nullable=False)
+    event = Column(String, nullable=False)
+    payload = Column(Text, nullable=False)
+    response_code = Column(Integer, nullable=True)
+    response_body = Column(Text, nullable=True)
+    status = Column(String, default="failed") # success, failed
+    attempt_number = Column(Integer, default=1)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 # Update User relationships to include Phase 7 models
 User.win_loss_analyses = relationship("WinLossAnalysis", back_populates="user", cascade="all, delete-orphan")

@@ -28,11 +28,13 @@ class DealService:
     @staticmethod
     def create_deal(db: Session, user_id: int, contact_id: Optional[int], 
                    name: str, value: float, stage: str = "prospecting", 
-                   expected_close: Optional[datetime] = None) -> Deal:
+                   expected_close: Optional[datetime] = None,
+                   workspace_id: Optional[int] = None) -> Deal:
         """Create new deal"""
         try:
             deal = Deal(
                 user_id=user_id,
+                workspace_id=workspace_id,
                 contact_id=contact_id,
                 title=name,
                 value=value,
@@ -141,11 +143,11 @@ class DealService:
             raise
     
     @staticmethod
-    def get_user_deals(db: Session, user_id: int, status: Optional[str] = None,
+    def get_user_deals(db: Session, user_id: int, workspace_id: Optional[int] = None, status: Optional[str] = None,
                       stage: Optional[str] = None, limit: int = 50) -> List[Deal]:
         """Get all deals for user with optional filtering"""
         try:
-            query = db.query(Deal).filter(Deal.user_id == user_id)
+            query = db.query(Deal).filter(Deal.user_id == user_id, Deal.workspace_id == workspace_id)
             
             if status:
                 query = query.filter(Deal.status == status)
@@ -160,10 +162,10 @@ class DealService:
             return []
     
     @staticmethod
-    def get_pipeline_summary(db: Session, user_id: int) -> Dict:
+    def get_pipeline_summary(db: Session, user_id: int, workspace_id: Optional[int] = None) -> Dict:
         """Get pipeline summary stats"""
         try:
-            deals = db.query(Deal).filter(Deal.user_id == user_id).all()
+            deals = db.query(Deal).filter(Deal.user_id == user_id, Deal.workspace_id == workspace_id).all()
             
             summary = {
                 "total_deals": len(deals),
@@ -204,12 +206,13 @@ class DealService:
             return {}
     
     @staticmethod
-    def get_overdue_deals(db: Session, user_id: int) -> List[Deal]:
+    def get_overdue_deals(db: Session, user_id: int, workspace_id: Optional[int] = None) -> List[Deal]:
         """Get deals with overdue expected close dates"""
         try:
             deals = db.query(Deal).filter(
                 and_(
                     Deal.user_id == user_id,
+                    Deal.workspace_id == workspace_id,
                     Deal.status == "open",
                     Deal.expected_close_at < datetime.utcnow()
                 )

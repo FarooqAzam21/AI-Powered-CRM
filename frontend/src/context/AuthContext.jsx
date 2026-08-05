@@ -4,9 +4,13 @@ import API from "../srevices/api";
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(
-    JSON.parse(localStorage.getItem("user"))
-  );
+  const [user, setUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("user"));
+    } catch {
+      return null;
+    }
+  });
 
   const login = useCallback(async (email, password) => {
     try {
@@ -67,6 +71,24 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
+  const refreshWorkspaceContext = useCallback(async (workspaceId) => {
+    if (!workspaceId) return;
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    localStorage.setItem("active_workspace_id", String(workspaceId));
+
+    const cachedUser = JSON.parse(localStorage.getItem("user") || "null");
+    if (cachedUser) {
+      const enrichedUser = {
+        ...cachedUser,
+        workspace_id: workspaceId,
+      };
+      localStorage.setItem("user", JSON.stringify(enrichedUser));
+      setUser(enrichedUser);
+    }
+  }, []);
+
   const logout = useCallback(() => {
     localStorage.clear();
     setUser(null);
@@ -103,7 +125,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, ssoLogin }}>
+    <AuthContext.Provider value={{ user, login, register, logout, ssoLogin, refreshWorkspaceContext }}>
       {children}
     </AuthContext.Provider>
   );

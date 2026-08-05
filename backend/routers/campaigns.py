@@ -18,6 +18,7 @@ from schemas.campaigns import (
     CampaignStart, BulkSendRequest, BulkRetryRequest, CampaignSendResponse
 )
 from services.campaign_service import CampaignService
+from services.webhook_service import trigger_webhook_event
 from scheduler.campaign_scheduler import scheduler
 from tasks.campaign_tasks import bulk_send_campaign, retry_failed_sends, update_campaign_analytics
 
@@ -43,8 +44,10 @@ async def create_campaign(
     """Create new campaign"""
     try:
         campaign = CampaignService.create_campaign(
-            db, current_user.id,
-            data.model_dump()
+            db,
+            current_user.id,
+            data.model_dump(),
+            workspace_id=current_user.workspace_id,
         )
         return campaign
     except Exception as e:
@@ -61,7 +64,10 @@ async def list_campaigns(
 ):
     """List campaigns"""
     try:
-        query = db.query(Campaign).filter(Campaign.user_id == current_user.id)
+        query = db.query(Campaign).filter(
+            Campaign.user_id == current_user.id,
+            Campaign.workspace_id == current_user.workspace_id,
+        )
         
         if status:
             query = query.filter(Campaign.status == status)
@@ -85,7 +91,8 @@ async def get_campaign(
     try:
         campaign = db.query(Campaign).filter(
             Campaign.id == campaign_id,
-            Campaign.user_id == current_user.id
+            Campaign.user_id == current_user.id,
+            Campaign.workspace_id == current_user.workspace_id,
         ).first()
         
         if not campaign:
@@ -109,7 +116,8 @@ async def update_campaign(
     try:
         campaign = db.query(Campaign).filter(
             Campaign.id == campaign_id,
-            Campaign.user_id == current_user.id
+            Campaign.user_id == current_user.id,
+            Campaign.workspace_id == current_user.workspace_id,
         ).first()
         
         if not campaign:
@@ -144,7 +152,8 @@ async def delete_campaign(
     try:
         campaign = db.query(Campaign).filter(
             Campaign.id == campaign_id,
-            Campaign.user_id == current_user.id
+            Campaign.user_id == current_user.id,
+            Campaign.workspace_id == current_user.workspace_id,
         ).first()
         
         if not campaign:
@@ -178,7 +187,8 @@ async def start_campaign(
     try:
         campaign = db.query(Campaign).filter(
             Campaign.id == campaign_id,
-            Campaign.user_id == current_user.id
+            Campaign.user_id == current_user.id,
+            Campaign.workspace_id == current_user.workspace_id,
         ).first()
         
         if not campaign:
@@ -199,6 +209,13 @@ async def start_campaign(
         
         # Queue bulk send task
         bulk_send_campaign.delay(campaign_id)
+        
+        # Fire webhook event for external integrations
+        if hasattr(current_user, 'workspace_id') and current_user.workspace_id:
+            trigger_webhook_event(db, current_user.workspace_id, "campaign.started", {
+                "id": campaign_id, "name": campaign.name,
+                "status": campaign.status.value if hasattr(campaign.status, 'value') else str(campaign.status)
+            })
         
         logger.info(f"🚀 Campaign {campaign_id} started")
         return {

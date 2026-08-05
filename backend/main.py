@@ -33,7 +33,12 @@ from routers.recommendations_router import router as recommendations_router
 from routers.task_router import router as celery_task_router
 from routers.websocket import router as websocket_router
 from routers.knowledge_router import router as knowledge_router
+from routers.developer_router import router as developer_router
+from routers.workspace_router import router as workspace_router
+from routers.organization_router import router as organization_router
 from ws_manager.socket import manager
+from middleware.api_audit_middleware import APIAuditMiddleware
+from middleware.tenant_context import TenantContextMiddleware
 
 settings = get_settings()
 logging.basicConfig(
@@ -43,6 +48,8 @@ logging.basicConfig(
 
 app = FastAPI(title=settings.app_name, version="2.0.0")
 
+app.add_middleware(TenantContextMiddleware)
+app.add_middleware(APIAuditMiddleware)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
@@ -70,6 +77,9 @@ app.include_router(tasks_router)
 app.include_router(ai_router)  # PHASE 5 - AI Model Optimization
 app.include_router(agent_router)  # PHASE 8 - Multi-Agent System
 app.include_router(knowledge_router)
+app.include_router(developer_router)
+app.include_router(workspace_router)
+app.include_router(organization_router)
 
 Base.metadata.create_all(bind=engine)
 ensure_auth_schema(engine)

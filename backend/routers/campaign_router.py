@@ -26,7 +26,7 @@ def _user(db, token):
 @router.get("")
 def list_campaigns(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     user = _user(db, current_user)
-    return db.query(Campaign).filter(Campaign.user_id == user.id).order_by(Campaign.created_at.desc()).all()
+    return db.query(Campaign).filter(Campaign.user_id == user.id, Campaign.workspace_id == current_user.get("workspace_id")).order_by(Campaign.created_at.desc()).all()
 
 
 @router.post("")
@@ -51,7 +51,7 @@ def create_campaign(data: CampaignCreate, current_user: dict = Depends(get_curre
 @router.post("/{campaign_id}/start")
 def start_campaign(campaign_id: int, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     user = _user(db, current_user)
-    campaign = db.query(Campaign).filter(Campaign.id == campaign_id, Campaign.user_id == user.id).first()
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id, Campaign.user_id == user.id, Campaign.workspace_id == current_user.get("workspace_id")).first()
     campaign.status = "queued"
     db.commit()
     task = enqueue_task("workers.campaign_tasks.send_campaign", "campaigns", {"campaign_id": campaign_id}, user_id=user.id)

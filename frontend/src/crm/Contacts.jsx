@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 
 import { getContacts, getContactInteractions } from "./api";
 import ContactsLeaderboard from "./ContactsLeaderboard";
+import { useCan } from "../security/permissionHooks";
+import { PERMISSIONS } from "../security/permissions";
+import PermissionGate from "../security/PermissionGate";
 
 const PAGE_SIZE = 50;
 
@@ -15,6 +18,11 @@ export default function Contacts() {
   const [selectedId, setSelectedId] = useState(null);
   const [interactions, setInteractions] = useState([]);
   const [loadingInteractions, setLoadingInteractions] = useState(false);
+
+  // Permission checks
+  const canEdit = useCan(PERMISSIONS.CONTACTS_EDIT);
+  const canDelete = useCan(PERMISSIONS.CONTACTS_DELETE);
+  const canExport = useCan(PERMISSIONS.CONTACTS_EXPORT);
 
   async function loadPage(nextOffset, append = false) {
     try {
@@ -51,10 +59,34 @@ export default function Contacts() {
 
   return (
     <section className="space-y-5">
-      <div>
-        <h2 className="text-2xl font-semibold">Contacts</h2>
-        <p className="text-sm text-slate-400">Auto-created from email metadata with interaction history.</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-semibold">Contacts</h2>
+          <p className="text-sm text-slate-400">Auto-created from email metadata with interaction history.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Create contact action */}
+          <button
+            disabled={!canEdit}
+            title={!canEdit ? "Requires Contact Edit permission (Sales or Admin)" : "Create a new contact entry"}
+            className="rounded-lg bg-cyan-400/10 hover:bg-cyan-400/20 text-cyan-200 border border-cyan-400/30 px-3.5 py-2 text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={() => alert("Creating contact...")}
+          >
+            Create Contact
+          </button>
+          
+          {/* Export contacts action */}
+          <button
+            disabled={!canExport}
+            title={!canExport ? "Requires Workspace Admin permission to export data" : "Export contacts list to CSV"}
+            className="rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 px-3.5 py-2 text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={() => alert("Exporting contacts...")}
+          >
+            Export Contacts
+          </button>
+        </div>
       </div>
+      
       {error && <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">{error}</div>}
       <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
         <div>
@@ -75,21 +107,40 @@ export default function Contacts() {
             </>
           )}
         </div>
-        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
-          <h3 className="mb-3 text-sm font-medium text-slate-300">Interaction History</h3>
-          {!selectedId ? (
-            <p className="text-sm text-slate-400">Select a contact to view interactions.</p>
-          ) : loadingInteractions ? (
-            <p className="text-sm text-slate-400">Loading...</p>
-          ) : interactions.length === 0 ? (
-            <p className="text-sm text-slate-400">No interactions recorded.</p>
-          ) : (
-            interactions.map((item) => (
-              <div key={item.id} className="mb-3 rounded-md bg-black/20 p-3 text-sm">
-                <p className="font-medium text-slate-200">{item.subject || "Email interaction"}</p>
-                <p className="text-xs text-slate-400">{item.snippet}</p>
-              </div>
-            ))
+        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 flex flex-col justify-between">
+          <div>
+            <h3 className="mb-3 text-sm font-medium text-slate-300">Interaction History</h3>
+            {!selectedId ? (
+              <p className="text-sm text-slate-400">Select a contact to view interactions.</p>
+            ) : loadingInteractions ? (
+              <p className="text-sm text-slate-400">Loading...</p>
+            ) : interactions.length === 0 ? (
+              <p className="text-sm text-slate-400">No interactions recorded.</p>
+            ) : (
+              interactions.map((item) => (
+                <div key={item.id} className="mb-3 rounded-md bg-black/20 p-3 text-sm">
+                  <p className="font-medium text-slate-200">{item.subject || "Email interaction"}</p>
+                  <p className="text-xs text-slate-400">{item.snippet}</p>
+                </div>
+              ))
+            )}
+          </div>
+          
+          {selectedId && (
+            <div className="mt-4 pt-4 border-t border-white/10 flex justify-end">
+              {/* Delete contact action */}
+              <button
+                disabled={!canDelete}
+                title={!canDelete ? "Requires Workspace Admin permission to delete contacts" : "Delete this contact entry"}
+                className="w-full rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 py-2 text-xs font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed"
+                onClick={() => {
+                  alert("Deleting contact...");
+                  setSelectedId(null);
+                }}
+              >
+                Delete Contact
+              </button>
+            </div>
           )}
         </div>
       </div>
