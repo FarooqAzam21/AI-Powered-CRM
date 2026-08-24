@@ -4,10 +4,10 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from database import get_db
-from auth.dependencies import require_super_admin, require_workspace_admin, AuthContext
+from auth.dependencies import require_super_admin, require_workspace_admin, AuthContext, require_org_member, get_auth_context
 from auth.models import Organization, Department, Team, User, UserGroup, WorkspacePolicy, AuditLog
 
-router = APIRouter(prefix="/api/v1/organization", tags=["Organization Management"])
+router = APIRouter(prefix="/api/v1/organization", tags=["Organization Management"], dependencies=[Depends(require_org_member)])
 
 
 # --- Schemas ---
@@ -50,9 +50,11 @@ class PolicyCreate(BaseModel):
 @router.get("/profile")
 def get_organization_profile(auth: AuthContext = Depends(require_super_admin), db: Session = Depends(get_db)):
     """Get active organization profile details."""
-    org = db.query(Organization).first()
+    if not auth.organization_id:
+        raise HTTPException(status_code=400, detail="No active organization context")
+    org = db.query(Organization).filter(Organization.id == auth.organization_id).first()
     if not org:
-        org = Organization(name="Default Enterprise", slug="default-org")
+        org = Organization(id=auth.organization_id, name="Default Enterprise", slug=f"org-{auth.organization_id}")
         db.add(org)
         db.commit()
         db.refresh(org)
@@ -61,7 +63,9 @@ def get_organization_profile(auth: AuthContext = Depends(require_super_admin), d
 @router.patch("/profile")
 def update_organization_profile(data: OrgUpdate, auth: AuthContext = Depends(require_super_admin), db: Session = Depends(get_db)):
     """Update organization settings."""
-    org = db.query(Organization).first()
+    if not auth.organization_id:
+        raise HTTPException(status_code=400, detail="No active organization context")
+    org = db.query(Organization).filter(Organization.id == auth.organization_id).first()
     if not org:
         raise HTTPException(404, "Organization not found")
     if data.name: org.name = data.name
@@ -72,28 +76,29 @@ def update_organization_profile(data: OrgUpdate, auth: AuthContext = Depends(req
     return org
 
 @router.get("/departments")
-def list_departments(auth: AuthContext = Depends(get_db), db: Session = Depends(get_db)):
+def list_departments(auth: AuthContext = Depends(require_org_member), db: Session = Depends(get_db)):
     """List departments in organization."""
-    return db.query(Department).all()
+    return db.query(Department).filter(Department.organization_id == auth.organization_id).all()
 
 @router.post("/departments")
 def create_department(data: DepartmentCreate, auth: AuthContext = Depends(require_super_admin), db: Session = Depends(get_db)):
     """Create a new department."""
-    org = db.query(Organization).first()
-    dept = Department(organization_id=org.id if org else 1, name=data.name, code=data.code)
+    if not auth.organization_id:
+        raise HTTPException(status_code=400, detail="No active organization context")
+    dept = Department(organization_id=auth.organization_id, name=data.name, code=data.code)
     db.add(dept)
     db.commit()
     db.refresh(dept)
     return dept
 
 @router.get("/directory")
-def get_employee_directory(auth: AuthContext = Depends(get_db), db: Session = Depends(get_db)):
+def get_employee_directory(auth: AuthContext = Depends(require_org_member), db: Session = Depends(get_db)):
     """Employee Directory with department and manager details."""
-    users = db.query(User).all()
+    users = db.query(User).filter(User.organization_id == auth.organization_id).all()
     directory = []
     for u in users:
-        mgr = db.query(User).filter(User.id == u.manager_id).first() if u.manager_id else None
-        dept = db.query(Department).filter(Department.id == u.department_id).first() if u.department_id else None
+        mgr = db.query(User).filter(User.id == u.manager_id, User.organization_id == auth.organization_id).first() if u.manager_id else None
+        dept = db.query(Department).filter(Department.id == u.department_id, Department.organization_id == auth.organization_id).first() if u.department_id else None
         directory.append({
             "id": u.id,
             "name": u.name,
@@ -109,7 +114,7 @@ def get_employee_directory(auth: AuthContext = Depends(get_db), db: Session = De
 @router.patch("/users/{user_id}")
 def update_user_org_info(user_id: int, data: UserUpdateOrg, auth: AuthContext = Depends(require_super_admin), db: Session = Depends(get_db)):
     """Manage job titles, department assignments, roles, manager relationships, and status."""
-    target_user = db.query(User).filter(User.id == user_id).first()
+    target_user = db.query(User).filter(User.id == user_id, User.organization_id == auth.organization_id).first()
     if not target_user:
         raise HTTPException(404, "User not found")
     
@@ -134,21 +139,22 @@ def bulk_invite_users(data: BulkInviteRequest, auth: AuthContext = Depends(requi
 @router.post("/users/bulk-role")
 def bulk_assign_roles(data: BulkRoleRequest, auth: AuthContext = Depends(require_super_admin), db: Session = Depends(get_db)):
     """Bulk role reassignment."""
-    db.query(User).filter(User.id.in_(data.user_ids)).update({User.role: data.role}, synchronize_session=False)
+    db.query(User).filter(User.id.in_(data.user_ids), User.organization_id == auth.organization_id).update({User.role: data.role}, synchronize_session=False)
     db.commit()
     return {"message": f"Updated role to {data.role} for {len(data.user_ids)} users"}
 
 @router.get("/user-groups")
-def list_user_groups(auth: AuthContext = Depends(get_db), db: Session = Depends(get_db)):
+def list_user_groups(auth: AuthContext = Depends(require_org_member), db: Session = Depends(get_db)):
     """List permission user groups."""
-    return db.query(UserGroup).all()
+    return db.query(UserGroup).filter(UserGroup.organization_id == auth.organization_id).all()
 
 @router.post("/user-groups")
 def create_user_group(data: UserGroupCreate, auth: AuthContext = Depends(require_super_admin), db: Session = Depends(get_db)):
     """Create user group."""
-    org = db.query(Organization).first()
+    if not auth.organization_id:
+        raise HTTPException(status_code=400, detail="No active organization context")
     group = UserGroup(
-        organization_id=org.id if org else 1,
+        organization_id=auth.organization_id,
         name=data.name,
         description=data.description,
         permissions=data.permissions
@@ -159,15 +165,17 @@ def create_user_group(data: UserGroupCreate, auth: AuthContext = Depends(require
     return group
 
 @router.get("/policies")
-def list_workspace_policies(auth: AuthContext = Depends(get_db), db: Session = Depends(get_db)):
+def list_workspace_policies(auth: AuthContext = Depends(require_org_member), db: Session = Depends(get_db)):
     """List enforced workspace policies."""
-    return db.query(WorkspacePolicy).all()
+    return db.query(WorkspacePolicy).filter(WorkspacePolicy.workspace_id == auth.workspace_id).all()
 
 @router.post("/policies")
 def create_workspace_policy(data: PolicyCreate, auth: AuthContext = Depends(require_super_admin), db: Session = Depends(get_db)):
     """Create a new workspace security or retention policy."""
+    if not auth.workspace_id:
+        raise HTTPException(status_code=400, detail="No active workspace context")
     policy = WorkspacePolicy(
-        workspace_id=auth.workspace_id or 1,
+        workspace_id=auth.workspace_id,
         name=data.name,
         policy_type=data.policy_type,
         rules=data.rules
@@ -180,4 +188,4 @@ def create_workspace_policy(data: PolicyCreate, auth: AuthContext = Depends(requ
 @router.get("/audit-logs")
 def get_organization_audit_logs(auth: AuthContext = Depends(require_super_admin), db: Session = Depends(get_db), limit: int = 100):
     """Retrieve organization activity audit log."""
-    return db.query(AuditLog).order_by(AuditLog.created_at.desc()).limit(limit).all()
+    return db.query(AuditLog).filter(AuditLog.workspace_id == auth.workspace_id).order_by(AuditLog.created_at.desc()).limit(limit).all()

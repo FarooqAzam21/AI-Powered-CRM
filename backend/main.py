@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 import os
@@ -39,6 +39,7 @@ from routers.organization_router import router as organization_router
 from ws_manager.socket import manager
 from middleware.api_audit_middleware import APIAuditMiddleware
 from middleware.tenant_context import TenantContextMiddleware
+from auth.dependencies import require_workspace_member
 
 settings = get_settings()
 logging.basicConfig(
@@ -62,23 +63,23 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(google_router)
-app.include_router(email_router)
-app.include_router(crm_router)
-app.include_router(contacts_router)
-app.include_router(deals_router)
-app.include_router(campaign_router)
-app.include_router(campaigns_phase9_router)
-app.include_router(analytics_router)
-app.include_router(analytics_phase7_router)
-app.include_router(recommendations_router)
-app.include_router(celery_task_router)
+app.include_router(email_router, dependencies=[Depends(require_workspace_member)])
+app.include_router(crm_router, dependencies=[Depends(require_workspace_member)])
+app.include_router(contacts_router, dependencies=[Depends(require_workspace_member)])
+app.include_router(deals_router, dependencies=[Depends(require_workspace_member)])
+app.include_router(campaign_router, dependencies=[Depends(require_workspace_member)])
+app.include_router(campaigns_phase9_router, dependencies=[Depends(require_workspace_member)])
+app.include_router(analytics_router, dependencies=[Depends(require_workspace_member)])
+app.include_router(analytics_phase7_router, dependencies=[Depends(require_workspace_member)])
+app.include_router(recommendations_router, dependencies=[Depends(require_workspace_member)])
+app.include_router(celery_task_router, dependencies=[Depends(require_workspace_member)])
 app.include_router(websocket_router)
-app.include_router(tasks_router)
-app.include_router(ai_router)  # PHASE 5 - AI Model Optimization
-app.include_router(agent_router)  # PHASE 8 - Multi-Agent System
-app.include_router(knowledge_router)
-app.include_router(developer_router)
-app.include_router(workspace_router)
+app.include_router(tasks_router, dependencies=[Depends(require_workspace_member)])
+app.include_router(ai_router, dependencies=[Depends(require_workspace_member)])  # PHASE 5 - AI Model Optimization
+app.include_router(agent_router, dependencies=[Depends(require_workspace_member)])  # PHASE 8 - Multi-Agent System
+app.include_router(knowledge_router, dependencies=[Depends(require_workspace_member)])
+app.include_router(developer_router, dependencies=[Depends(require_workspace_member)])
+app.include_router(workspace_router, dependencies=[Depends(require_workspace_member)])
 app.include_router(organization_router)
 
 Base.metadata.create_all(bind=engine)

@@ -108,7 +108,7 @@ class WorkspaceMember(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     workspace = relationship("Workspace", back_populates="members")
-    user = relationship("User", back_populates="workspace_members")
+    user = relationship("User", foreign_keys=[user_id], back_populates="workspace_members")
 
     __table_args__ = ({"extend_existing": True},)
 
@@ -245,7 +245,13 @@ class User(Base):
     is_verified = Column(Boolean, default=False)
     verification_token = Column(String, nullable=True)
 
-    workspace_members = relationship("WorkspaceMember", back_populates="user", cascade="all, delete-orphan")
+    workspace_members = relationship(
+        "WorkspaceMember",
+        primaryjoin="User.id == WorkspaceMember.user_id",
+        foreign_keys="[WorkspaceMember.user_id]",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
     workspace = relationship("Workspace", foreign_keys=[workspace_id], back_populates="users")
 
 
@@ -270,23 +276,6 @@ class WorkspacePolicy(Base):
     rules = Column(JSON, default=dict)
     is_enforced = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-
-    # Google OAuth
-    google_access_token = Column(String, nullable=True)
-    google_refresh_token = Column(String, nullable=True)
-    gmail_connected = Column(Boolean, default=False)
-    
-    # Relationships
-    workspace = relationship("Workspace", back_populates="users")
-    contacts = relationship("auth.models.Contact", back_populates="user", cascade="all, delete-orphan")
-    leads = relationship("auth.models.Lead", back_populates="user", cascade="all, delete-orphan")
-    activities = relationship("auth.models.Activity", back_populates="user", cascade="all, delete-orphan")
-    emails = relationship("Email", back_populates="user", cascade="all, delete-orphan")
-    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
-    campaigns = relationship("models.campaigns.Campaign", back_populates="user", cascade="all, delete-orphan")
-    
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 # =================== CONTACTS & LEADS ===================
 class Contact(Base):
@@ -536,10 +525,16 @@ class AIRecommendation(Base):
     expires_at = Column(DateTime)  # Recommendation relevance expires
 
 # Update User relationships to include Phase 6 models
+User.contacts = relationship("auth.models.Contact", back_populates="user", cascade="all, delete-orphan")
+User.leads = relationship("auth.models.Lead", back_populates="user", cascade="all, delete-orphan")
+User.activities = relationship("auth.models.Activity", back_populates="user", cascade="all, delete-orphan")
+User.emails = relationship("auth.models.Email", back_populates="user", cascade="all, delete-orphan")
+User.notifications = relationship("auth.models.Notification", back_populates="user", cascade="all, delete-orphan")
 User.deals = relationship("auth.models.Deal", back_populates="user", cascade="all, delete-orphan")
+User.campaigns = relationship("models.campaigns.Campaign", back_populates="user", cascade="all, delete-orphan")
 User.profiles = relationship("models.crm.CustomerProfile", cascade="all, delete-orphan")
-User.relationships = relationship("ContactRelationship", back_populates="user", cascade="all, delete-orphan")
-User.recommendations = relationship("AIRecommendation", back_populates="user", cascade="all, delete-orphan")
+User.relationships = relationship("auth.models.ContactRelationship", back_populates="user", cascade="all, delete-orphan")
+User.recommendations = relationship("auth.models.AIRecommendation", back_populates="user", cascade="all, delete-orphan")
 
 # Update Contact relationships to include Phase 6 models
 Contact.deals = relationship("auth.models.Deal", back_populates="contact", cascade="all, delete-orphan")

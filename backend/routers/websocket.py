@@ -4,7 +4,7 @@ Real-time WebSocket endpoints for live dashboard streaming
 """
 import logging
 import json
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from auth.dependencies import get_current_user_model
 from auth.models import User
@@ -15,6 +15,7 @@ from websocket.dashboard_models import (
     SubscriptionConfirmedEvent, ErrorEvent
 )
 from services.dashboard_service import DashboardService
+from auth.ws_auth import verify_ws_user
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +31,18 @@ def get_db():
 # =================== WEBSOCKET ENDPOINTS ===================
 
 @router.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: int, db: Session = Depends(get_db)):
+async def websocket_endpoint(websocket: WebSocket, user_id: int, token: str = Query(...), db: Session = Depends(get_db)):
     """
     WebSocket endpoint for real-time dashboard
     Connection URL: ws://localhost:8000/api/v1/ws/{user_id}
     """
     try:
+        # Validate JWT/API auth and workspace membership
+        user = verify_ws_user(db, user_id, token)
+        if not user:
+            await websocket.close(code=4001)
+            return
+
         # Connect
         await manager.connect(user_id, websocket)
         logger.info(f"🔗 WebSocket connected: user {user_id}")
