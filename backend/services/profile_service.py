@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from auth.models import User
 from models.crm import Contact, EmailMetadata, Activity, Interaction, CustomerProfile
-from ai.ollama_client import generate_cached, generate_classification
 from typing import Optional, Dict, List
 
 logger = logging.getLogger(__name__)
@@ -19,36 +18,53 @@ class CustomerProfileService:
     """Service for AI-generated customer profiles"""
     
     @staticmethod
-    def generate_profile(db: Session, contact_id: int, use_cache: bool = True) -> Optional[CustomerProfile]:
+    def generate_profile(db: Session, contact_id: int, use_cache: bool = True, workspace_id: Optional[int] = None) -> Optional[CustomerProfile]:
         """
         Generate AI profile for contact based on email history and interactions
         """
         try:
-            contact = db.query(Contact).filter(Contact.id == contact_id).first()
+            cont_q = db.query(Contact).filter(Contact.id == contact_id)
+            if workspace_id is not None:
+                cont_q = cont_q.filter(Contact.workspace_id == workspace_id)
+            contact = cont_q.first()
             if not contact:
                 logger.error(f"Contact {contact_id} not found")
                 return None
             
+            target_ws = workspace_id or getattr(contact, 'workspace_id', None)
             logger.info(f"🧠 Generating profile for {contact.email}...")
             
             # Check if profile already exists
-            profile = db.query(CustomerProfile).filter(
+            prof_q = db.query(CustomerProfile).filter(
                 CustomerProfile.contact_id == contact_id
-            ).first()
+            )
+            if target_ws is not None:
+                prof_q = prof_q.filter(CustomerProfile.workspace_id == target_ws)
+            profile = prof_q.first()
             
             # Gather email history and interactions
-            emails = (
+            email_q = (
                 db.query(EmailMetadata)
                 .filter(EmailMetadata.user_id == contact.user_id, EmailMetadata.sender_email == contact.email)
-                .all()
             )
-            activities = db.query(Activity).filter(Activity.contact_id == contact_id).all()
-            interactions = db.query(Interaction).filter(Interaction.contact_id == contact_id).all()
+            if target_ws is not None:
+                email_q = email_q.filter(EmailMetadata.workspace_id == target_ws)
+            emails = email_q.all()
+            
+            act_q = db.query(Activity).filter(Activity.contact_id == contact_id)
+            if target_ws is not None:
+                act_q = act_q.filter(Activity.workspace_id == target_ws)
+            activities = act_q.all()
+            
+            inter_q = db.query(Interaction).filter(Interaction.contact_id == contact_id)
+            if target_ws is not None and hasattr(Interaction, "workspace_id"):
+                inter_q = inter_q.filter(Interaction.workspace_id == target_ws)
+            interactions = inter_q.all()
             
             if not emails and not interactions:
                 logger.warning(f"No email history for {contact.email}")
                 if not profile:
-                    profile = CustomerProfileService._create_empty_profile(db, contact_id, contact.user_id)
+                    profile = CustomerProfileService._create_empty_profile(db, contact_id, contact.user_id, workspace_id=target_ws)
                 return profile
 
             email_texts = [
@@ -260,9 +276,10 @@ Provide a concise 2-3 sentence summary about this customer."""
         return detected[:5]
     
     @staticmethod
-    def _create_empty_profile(db: Session, contact_id: int, user_id: int) -> CustomerProfile:
+    def _create_empty_profile(db: Session, contact_id: int, user_id: int, workspace_id: Optional[int] = None) -> CustomerProfile:
         """Create empty profile placeholder"""
         profile = CustomerProfile(
+            workspace_id=workspace_id,
             contact_id=contact_id,
             user_id=user_id,
             summary="Profile generation pending",
@@ -276,19 +293,26 @@ Provide a concise 2-3 sentence summary about this customer."""
         return profile
     
     @staticmethod
-    def update_profile_from_email(db: Session, contact_id: int, email: EmailMetadata) -> None:
+    def update_profile_from_email(db: Session, contact_id: int, email: EmailMetadata, workspace_id: Optional[int] = None) -> None:
         """Update profile insights when new email arrives"""
         try:
-            profile = db.query(CustomerProfile).filter(
+            query = db.query(CustomerProfile).filter(
                 CustomerProfile.contact_id == contact_id
-            ).first()
+            )
+            target_ws = workspace_id or getattr(email, "workspace_id", None)
+            if target_ws is not None:
+                query = query.filter(CustomerProfile.workspace_id == target_ws)
+            profile = query.first()
             
             if not profile:
                 return
             
             # Update engagement level
+            act_q = db.query(Activity).filter(Activity.contact_id == contact_id)
+            if target_ws is not None and hasattr(Activity, "workspace_id"):
+                act_q = act_q.filter(Activity.workspace_id == target_ws)
             profile.engagement_level = CustomerProfileService._calculate_engagement_level(
-                db.query(Activity).filter(Activity.contact_id == contact_id).all()
+                act_q.all()
             )
             profile.generated_at = datetime.utcnow()
             
@@ -298,17 +322,23 @@ Provide a concise 2-3 sentence summary about this customer."""
             logger.warning(f"Could not update profile: {e}")
     
     @staticmethod
-    def get_profile(db: Session, contact_id: int) -> Optional[CustomerProfile]:
+    def get_profile(db: Session, contact_id: int, workspace_id: Optional[int] = None) -> Optional[CustomerProfile]:
         """Get customer profile"""
-        return db.query(CustomerProfile).filter(
+        query = db.query(CustomerProfile).filter(
             CustomerProfile.contact_id == contact_id
-        ).first()
+        )
+        if workspace_id is not None:
+            query = query.filter(CustomerProfile.workspace_id == workspace_id)
+        return query.first()
     
     @staticmethod
     def list_profiles_by_engagement(db: Session, user_id: int, 
-                                   engagement_level: Optional[str] = None) -> List[CustomerProfile]:
+                                   engagement_level: Optional[str] = None,
+                                   workspace_id: Optional[int] = None) -> List[CustomerProfile]:
         """List profiles filtered by engagement level"""
         query = db.query(CustomerProfile).filter(CustomerProfile.user_id == user_id)
+        if workspace_id is not None:
+            query = query.filter(CustomerProfile.workspace_id == workspace_id)
         
         if engagement_level:
             query = query.filter(CustomerProfile.engagement_level == engagement_level)

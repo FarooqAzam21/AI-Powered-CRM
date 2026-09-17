@@ -50,8 +50,10 @@ def sync_metadata_page(db, user: User, page_size: int = 10) -> dict:
         ).execute()
         headers = _headers(detail.get("payload", {}).get("headers", []))
         sender_name, sender_email = parseaddr(headers.get("from", ""))
+        ws_id = getattr(user, "workspace_id", None)
         meta = EmailMetadata(
             user_id=user.id,
+            workspace_id=ws_id,
             gmail_message_id=gmail_id,
             thread_id=detail.get("threadId"),
             sender=sender_name or sender_email or "Unknown",
@@ -71,6 +73,7 @@ def sync_metadata_page(db, user: User, page_size: int = 10) -> dict:
             snippet=meta.snippet,
             gmail_message_id=gmail_id,
             occurred_at=meta.internal_date,
+            workspace_id=ws_id,
         )
         inserted += 1
 

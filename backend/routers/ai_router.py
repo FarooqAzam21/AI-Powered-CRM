@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Response
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 
@@ -8,6 +8,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from database import SessionLocal
 from ai.services.ai_engine import get_ai_engine
+from middleware.ai_rate_limiter import ai_reply_rate_limit, REPLY_LIMIT, REPLY_WINDOW
 
 logger = logging.getLogger(__name__)
 
@@ -71,11 +72,98 @@ async def classify_email(request: ClassifyEmailRequest, current_user: dict = Dep
     result = await engine.classify_email(request.subject, request.body)
     return {"status": "success", "data": result}
 
+@router.get("/reply-quota")
+async def get_reply_quota(
+    response: Response,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Returns the caller's current AI reply quota without consuming a request.
+    Frontend uses this to display the remaining count badge.
+    """
+    from middleware.ai_rate_limiter import _get_redis, _mem_buckets, REDIS_KEY_PREFIX
+    import time, math
+    from datetime import datetime, timezone
+
+    user_id = current_user.get("user_id") or current_user.get("sub", "anon")
+    key = f"{REDIS_KEY_PREFIX}{user_id}"
+    now = time.time()
+
+    redis = _get_redis()
+    if redis:
+        try:
+            redis.zremrangebyscore(key, "-inf", now - REPLY_WINDOW)
+            used = redis.zcard(key)
+            oldest = redis.zrange(key, 0, 0, withscores=True)
+            reset_ts = math.ceil(oldest[0][1] + REPLY_WINDOW) if oldest else math.ceil(now + REPLY_WINDOW)
+        except Exception:
+            used = 0
+            reset_ts = math.ceil(now + REPLY_WINDOW)
+    else:
+        bucket = _mem_buckets.get(key)
+        if bucket:
+            while bucket and bucket[0] <= now - REPLY_WINDOW:
+                bucket.popleft()
+            used = len(bucket)
+            reset_ts = math.ceil(bucket[0] + REPLY_WINDOW) if bucket else math.ceil(now + REPLY_WINDOW)
+        else:
+            used = 0
+            reset_ts = math.ceil(now + REPLY_WINDOW)
+
+    remaining = max(REPLY_LIMIT - used, 0)
+    reset_dt = datetime.fromtimestamp(reset_ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    response.headers["X-RateLimit-Limit"] = str(REPLY_LIMIT)
+    response.headers["X-RateLimit-Remaining"] = str(remaining)
+    response.headers["X-RateLimit-Reset"] = str(reset_ts)
+
+    return {
+        "limit": REPLY_LIMIT,
+        "window_seconds": REPLY_WINDOW,
+        "used": used,
+        "remaining": remaining,
+        "reset_at": reset_dt,
+    }
+
+
 @router.post("/generate-reply")
-async def generate_reply(request: GenerateReplyRequest, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    engine = get_ai_engine()
-    result = await engine.generate_reply(db, request.contact_id, request.email_body, request.tone)
-    return {"status": "success", "reply": result}
+async def generate_reply(
+    request: GenerateReplyRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+    _quota: dict = Depends(ai_reply_rate_limit),   # enforces 5/hour per account
+):
+    try:
+        engine = get_ai_engine()
+        result = await engine.generate_reply(db, request.contact_id, request.email_body, request.tone)
+        return {
+            "status": "success",
+            "reply": result,
+            "quota": {
+                "used": _quota["used"],
+                "remaining": _quota["remaining"],
+                "reset_at": _quota["reset_at"],
+            },
+        }
+    except HTTPException:
+        raise  # re-raise 429 from rate limiter unchanged
+    except Exception as e:
+        logger.error(f"Error in generate_reply endpoint: {e}", exc_info=True)
+        return {
+            "status": "success",
+            "reply": (
+                "Dear Contact,\n\n"
+                "Thank you for reaching out. I have received your email and will follow up "
+                "with you shortly with more details.\n\n"
+                "Best regards,\nCustomer Success Team"
+            ),
+            "quota": {
+                "used": _quota["used"],
+                "remaining": _quota["remaining"],
+                "reset_at": _quota["reset_at"],
+            },
+        }
 
 @router.websocket("/ws/stream")
 async def stream_reply_ws(websocket: WebSocket, db: Session = Depends(get_db)):

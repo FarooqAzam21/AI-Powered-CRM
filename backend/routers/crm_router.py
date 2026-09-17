@@ -65,9 +65,9 @@ def contact_profile(contact_id: int, current_user: dict = Depends(get_current_us
     contact = db.query(Contact).filter(Contact.id == contact_id, Contact.workspace_id == workspace_id).first()
     if not contact:
         raise HTTPException(404, "Contact not found")
-    profile = db.query(CustomerProfile).filter(CustomerProfile.contact_id == contact_id).first()
+    profile = db.query(CustomerProfile).filter(CustomerProfile.contact_id == contact_id, CustomerProfile.workspace_id == workspace_id).first()
     if not profile:
-        profile = CustomerProfileService.generate_profile(db, contact_id)
+        profile = CustomerProfileService.generate_profile(db, contact_id, workspace_id=workspace_id)
     return profile
 
 
@@ -77,7 +77,7 @@ def refresh_contact_profile(contact_id: int, current_user: dict = Depends(get_cu
     contact = db.query(Contact).filter(Contact.id == contact_id, Contact.workspace_id == workspace_id).first()
     if not contact:
         raise HTTPException(404, "Contact not found")
-    profile = CustomerProfileService.generate_profile(db, contact_id, use_cache=False)
+    profile = CustomerProfileService.generate_profile(db, contact_id, use_cache=False, workspace_id=workspace_id)
     if not profile:
         raise HTTPException(500, "Profile generation failed")
     return profile

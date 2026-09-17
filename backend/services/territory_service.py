@@ -17,7 +17,8 @@ class TerritoryService:
     
     @staticmethod
     def create_territory_metrics(db: Session, user_id: int, territory_name: str,
-                                territory_type: str = "geographic") -> Optional[TerritoryMetrics]:
+                                territory_type: str = "geographic",
+                                workspace_id: Optional[int] = None) -> Optional[TerritoryMetrics]:
         """
         Create or update territory metrics
         """
@@ -25,12 +26,15 @@ class TerritoryService:
             logger.info(f"📊 Calculating metrics for territory: {territory_name}")
             
             # Get deals for territory
-            deals = db.query(Deal).filter(
+            deal_q = db.query(Deal).filter(
                 and_(
                     Deal.user_id == user_id,
                     Deal.territory == territory_name if hasattr(Deal, 'territory') else True
                 )
-            ).all()
+            )
+            if workspace_id is not None:
+                deal_q = deal_q.filter(Deal.workspace_id == workspace_id)
+            deals = deal_q.all()
             
             # Calculate metrics
             open_deals = [d for d in deals if d.status == "open"]
@@ -42,7 +46,10 @@ class TerritoryService:
             won_revenue = sum(d.value for d in won_deals)
             
             # Contact metrics
-            contacts = db.query(Contact).filter(Contact.user_id == user_id).all()
+            cont_q = db.query(Contact).filter(Contact.user_id == user_id)
+            if workspace_id is not None:
+                cont_q = cont_q.filter(Contact.workspace_id == workspace_id)
+            contacts = cont_q.all()
             active_contacts = len([c for c in contacts if 
                 db.query(Activity).filter(
                     and_(
@@ -69,6 +76,7 @@ class TerritoryService:
             growth_rate = (len(prev_deals) / max(len(deals) - len(prev_deals), 1) * 100) if len(deals) > len(prev_deals) else 0
             
             metrics = TerritoryMetrics(
+                workspace_id=workspace_id,
                 user_id=user_id,
                 territory_name=territory_name,
                 territory_type=territory_type,
@@ -158,8 +166,12 @@ class TerritoryService:
         score = 0
         
         # Stalled deals (0-40 points)
-        stalled = [d for d in deals if d.status == "open" and 
-                  (datetime.utcnow() - d.stage_moved_at).days > 30 if d.stage_moved_at]
+        stalled = [
+            d for d in deals
+            if d.status == "open"
+            and d.stage_moved_at is not None
+            and (datetime.utcnow() - d.stage_moved_at).days > 30
+        ]
         if len(stalled) > len(deals) * 0.3:
             score += 40
         elif len(stalled) > len(deals) * 0.1:
@@ -182,18 +194,21 @@ class TerritoryService:
         return min(score, 100)
     
     @staticmethod
-    def get_territory_comparison(db: Session, user_id: int) -> Dict:
+    def get_territory_comparison(db: Session, user_id: int, workspace_id: Optional[int] = None) -> Dict:
         """Compare all territories for a user"""
         try:
-            metrics = db.query(TerritoryMetrics).filter(
+            query = db.query(TerritoryMetrics).filter(
                 TerritoryMetrics.user_id == user_id
-            ).all()
+            )
+            if workspace_id is not None:
+                query = query.filter(TerritoryMetrics.workspace_id == workspace_id)
+            metrics = query.all()
             
             comparison = {
                 "territories": len(metrics),
-                "total_pipeline": sum(m.pipeline_value for m in metrics),
-                "total_revenue": sum(m.revenue_actual for m in metrics),
-                "avg_win_rate": sum(m.win_rate_pct for m in metrics) / len(metrics) if metrics else 0,
+                "total_pipeline": sum((m.pipeline_value or 0) for m in metrics),
+                "total_revenue": sum((m.revenue_actual or 0) for m in metrics),
+                "avg_win_rate": sum((m.win_rate_pct or 0) for m in metrics) / len(metrics) if metrics else 0,
                 "top_performers": [],
                 "at_risk": [],
                 "opportunities": []
@@ -219,12 +234,15 @@ class TerritoryService:
             return {}
     
     @staticmethod
-    def get_optimization_recommendations(db: Session, user_id: int) -> Dict:
+    def get_optimization_recommendations(db: Session, user_id: int, workspace_id: Optional[int] = None) -> Dict:
         """Generate optimization recommendations for territories"""
         try:
-            metrics = db.query(TerritoryMetrics).filter(
+            query = db.query(TerritoryMetrics).filter(
                 TerritoryMetrics.user_id == user_id
-            ).all()
+            )
+            if workspace_id is not None:
+                query = query.filter(TerritoryMetrics.workspace_id == workspace_id)
+            metrics = query.all()
             
             recommendations = {
                 "reallocate_resources": [],

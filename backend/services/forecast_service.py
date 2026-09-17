@@ -18,7 +18,8 @@ class ForecastService:
     
     @staticmethod
     def record_forecast(db: Session, user_id: int, month: str, 
-                       forecasted_revenue: float) -> Optional[ForecastAccuracy]:
+                       forecasted_revenue: float,
+                       workspace_id: Optional[int] = None) -> Optional[ForecastAccuracy]:
         """
         Record monthly forecast
         month: 'YYYY-MM' format
@@ -27,6 +28,7 @@ class ForecastService:
             logger.info(f"📊 Recording forecast for {month}: ${forecasted_revenue:.2f}")
             
             forecast = ForecastAccuracy(
+                workspace_id=workspace_id,
                 user_id=user_id,
                 forecast_month=month,
                 forecast_date=datetime.utcnow(),
@@ -48,7 +50,8 @@ class ForecastService:
             return None
     
     @staticmethod
-    def calculate_month_accuracy(db: Session, user_id: int, month: str) -> Optional[ForecastAccuracy]:
+    def calculate_month_accuracy(db: Session, user_id: int, month: str,
+                                 workspace_id: Optional[int] = None) -> Optional[ForecastAccuracy]:
         """
         Calculate forecast accuracy for a month at month end
         month: 'YYYY-MM' format
@@ -62,26 +65,32 @@ class ForecastService:
             logger.info(f"📊 Calculating accuracy for {month}...")
             
             # Get forecast record
-            forecast = db.query(ForecastAccuracy).filter(
+            forecast_q = db.query(ForecastAccuracy).filter(
                 and_(
                     ForecastAccuracy.user_id == user_id,
                     ForecastAccuracy.forecast_month == month
                 )
-            ).first()
+            )
+            if workspace_id is not None:
+                forecast_q = forecast_q.filter(ForecastAccuracy.workspace_id == workspace_id)
+            forecast = forecast_q.first()
             
             if not forecast:
                 logger.warning(f"No forecast found for {month}")
                 return None
             
             # Get actual revenue (won deals)
-            won_deals = db.query(Deal).filter(
+            deal_q = db.query(Deal).filter(
                 and_(
                     Deal.user_id == user_id,
                     Deal.actual_close_date >= month_start,
                     Deal.actual_close_date <= month_end,
                     Deal.status == "won"
                 )
-            ).all()
+            )
+            if workspace_id is not None:
+                deal_q = deal_q.filter(Deal.workspace_id == workspace_id)
+            won_deals = deal_q.all()
             
             actual_revenue = sum(d.value for d in won_deals)
             win_rate = len(won_deals)
@@ -100,9 +109,13 @@ class ForecastService:
             forecast.actual_revenue = actual_revenue
             forecast.forecast_accuracy_pct = accuracy_pct
             forecast.win_rate_pct = (win_rate / len(won_deals)) * 100 if won_deals else 0
-            forecast.deals_forecast = len(db.query(Deal).filter(
+            
+            deal_count_q = db.query(Deal).filter(
                 and_(Deal.user_id == user_id, Deal.stage != "prospecting")
-            ).all())
+            )
+            if workspace_id is not None:
+                deal_count_q = deal_count_q.filter(Deal.workspace_id == workspace_id)
+            forecast.deals_forecast = len(deal_count_q.all())
             forecast.deals_won = win_rate
             forecast.deals_lost = lost_deals_count
             forecast.variance_reasons = variance_reasons
@@ -137,12 +150,15 @@ class ForecastService:
         return reasons
     
     @staticmethod
-    def get_accuracy_trends(db: Session, user_id: int, months: int = 12) -> Dict:
+    def get_accuracy_trends(db: Session, user_id: int, months: int = 12, workspace_id: Optional[int] = None) -> Dict:
         """Get forecast accuracy trends over time"""
         try:
-            forecasts = db.query(ForecastAccuracy).filter(
+            query = db.query(ForecastAccuracy).filter(
                 ForecastAccuracy.user_id == user_id
-            ).order_by(ForecastAccuracy.forecast_month.desc()).limit(months).all()
+            )
+            if workspace_id is not None:
+                query = query.filter(ForecastAccuracy.workspace_id == workspace_id)
+            forecasts = query.order_by(ForecastAccuracy.forecast_month.desc()).limit(months).all()
             
             trends = {
                 "total_forecasts": len(forecasts),
@@ -170,13 +186,16 @@ class ForecastService:
             return {}
     
     @staticmethod
-    def identify_forecast_drivers(db: Session, user_id: int) -> Dict:
+    def identify_forecast_drivers(db: Session, user_id: int, workspace_id: Optional[int] = None) -> Dict:
         """Identify what drives forecast accuracy"""
         try:
             # Get recent forecasts
-            forecasts = db.query(ForecastAccuracy).filter(
+            query = db.query(ForecastAccuracy).filter(
                 ForecastAccuracy.user_id == user_id
-            ).order_by(ForecastAccuracy.forecast_month.desc()).limit(6).all()
+            )
+            if workspace_id is not None:
+                query = query.filter(ForecastAccuracy.workspace_id == workspace_id)
+            forecasts = query.order_by(ForecastAccuracy.forecast_month.desc()).limit(6).all()
             
             drivers = {
                 "primary_win_drivers": [],

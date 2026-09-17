@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from auth.dependencies import get_auth_context, require_workspace_admin, AuthContext
-from auth.models import Workspace, WorkspaceSetting, WorkspaceInvitation, Team, User
+from auth.models import Workspace, WorkspaceSetting, WorkspaceInvitation, Team, User, WorkspaceMember
+from auth.rbac import Role
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["Workspaces"])
 
@@ -74,6 +75,20 @@ def create_workspace(data: WorkspaceCreate, auth: AuthContext = Depends(get_auth
         "advanced_analytics": True
     })
     db.add(settings)
+
+    # Assign creator as Workspace Admin
+    member = WorkspaceMember(
+        workspace_id=ws.id,
+        organization_id=ws.organization_id,
+        user_id=auth.user.id,
+        role=Role.WORKSPACE_ADMIN,
+        status="active"
+    )
+    db.add(member)
+
+    if auth.user.workspace_id is None:
+        auth.user.workspace_id = ws.id
+
     db.commit()
 
     return ws

@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
 from auth.models import AIRecommendation
 from models.crm import Activity, Contact, CustomerProfile, Deal, EmailMetadata, Interaction, Lead
-from ai.ollama_client import generate_cached
 from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -29,43 +28,59 @@ class RecommendationEngine:
     
     @staticmethod
     def generate_contact_recommendations(db: Session, user_id: int, 
-                                        contact_id: int) -> List[AIRecommendation]:
+                                        contact_id: int,
+                                        workspace_id: Optional[int] = None) -> List[AIRecommendation]:
         """
         Generate recommendations for a specific contact
         Analyzes: recent emails, activity, lead status, deal pipeline
         """
         try:
-            contact = db.query(Contact).filter(Contact.id == contact_id).first()
+            cont_q = db.query(Contact).filter(Contact.id == contact_id)
+            if workspace_id is not None:
+                cont_q = cont_q.filter(Contact.workspace_id == workspace_id)
+            contact = cont_q.first()
             if not contact:
                 logger.error(f"Contact {contact_id} not found")
                 return []
             
+            target_ws = workspace_id or getattr(contact, 'workspace_id', None)
             logger.info(f"🧠 Generating recommendations for {contact.email}...")
             
             recommendations = []
             
             # Get contact context
-            profile = db.query(CustomerProfile).filter(
+            profile_q = db.query(CustomerProfile).filter(
                 CustomerProfile.contact_id == contact_id
-            ).first()
+            )
+            if target_ws is not None and hasattr(CustomerProfile, "workspace_id"):
+                profile_q = profile_q.filter(CustomerProfile.workspace_id == target_ws)
+            profile = profile_q.first()
             
-            recent_emails = (
+            email_q = (
                 db.query(EmailMetadata)
                 .filter(
                     EmailMetadata.user_id == user_id,
                     EmailMetadata.sender_email == contact.email,
                 )
-                .order_by(desc(EmailMetadata.internal_date))
-                .limit(5)
-                .all()
             )
+            if target_ws is not None and hasattr(EmailMetadata, "workspace_id"):
+                email_q = email_q.filter(EmailMetadata.workspace_id == target_ws)
+            recent_emails = email_q.order_by(desc(EmailMetadata.internal_date)).limit(5).all()
             
-            recent_activity = db.query(Activity).filter(
-                Activity.contact_id == contact_id
-            ).order_by(desc(Activity.created_at)).limit(10).all()
+            act_q = db.query(Activity).filter(Activity.contact_id == contact_id)
+            if target_ws is not None and hasattr(Activity, "workspace_id"):
+                act_q = act_q.filter(Activity.workspace_id == target_ws)
+            recent_activity = act_q.order_by(desc(Activity.created_at)).limit(10).all()
             
-            lead = db.query(Lead).filter(Lead.contact_id == contact_id).first()
-            deals = db.query(Deal).filter(Deal.contact_id == contact_id).all()
+            lead_q = db.query(Lead).filter(Lead.contact_id == contact_id)
+            if target_ws is not None and hasattr(Lead, "workspace_id"):
+                lead_q = lead_q.filter(Lead.workspace_id == target_ws)
+            lead = lead_q.first()
+
+            deal_q = db.query(Deal).filter(Deal.contact_id == contact_id)
+            if target_ws is not None and hasattr(Deal, "workspace_id"):
+                deal_q = deal_q.filter(Deal.workspace_id == target_ws)
+            deals = deal_q.all()
             
             # Build context for AI
             context = RecommendationEngine._build_contact_context(
@@ -75,7 +90,7 @@ class RecommendationEngine:
             # Generate next action recommendation
             if recent_emails or recent_activity:
                 next_action = RecommendationEngine._generate_next_action(
-                    db, user_id, contact_id, context
+                    db, user_id, contact_id, context, workspace_id=target_ws
                 )
                 if next_action:
                     recommendations.append(next_action)
@@ -83,7 +98,7 @@ class RecommendationEngine:
             # Generate best time recommendation
             if profile:
                 best_time = RecommendationEngine._generate_best_time(
-                    db, user_id, contact_id, profile
+                    db, user_id, contact_id, profile, workspace_id=target_ws
                 )
                 if best_time:
                     recommendations.append(best_time)
@@ -95,7 +110,7 @@ class RecommendationEngine:
                 
                 if days_since > 3:
                     follow_up = RecommendationEngine._generate_followup_recommendation(
-                        db, user_id, contact_id, days_since
+                        db, user_id, contact_id, days_since, workspace_id=target_ws
                     )
                     if follow_up:
                         recommendations.append(follow_up)
@@ -105,7 +120,7 @@ class RecommendationEngine:
                 for deal in deals:
                     if deal.status == "open":
                         deal_rec = RecommendationEngine._generate_deal_recommendation(
-                            db, user_id, deal, contact, profile
+                            db, user_id, deal, contact, profile, workspace_id=target_ws
                         )
                         if deal_rec:
                             recommendations.append(deal_rec)
@@ -116,10 +131,10 @@ class RecommendationEngine:
         except Exception as e:
             logger.error(f"❌ Recommendation generation failed: {e}")
             return []
-    
+
     @staticmethod
     def _generate_next_action(db: Session, user_id: int, contact_id: int, 
-                             context: str) -> Optional[AIRecommendation]:
+                             context: str, workspace_id: Optional[int] = None) -> Optional[AIRecommendation]:
         """Generate next action recommendation using AI"""
         try:
             prompt = f"""Based on this contact context, suggest the best next action:
@@ -131,6 +146,7 @@ Provide a specific, actionable recommendation (1-2 sentences max)."""
             recommendation_text = asyncio.run(generate_cached(prompt, use_compression=True))
             
             rec = AIRecommendation(
+                workspace_id=workspace_id,
                 user_id=user_id,
                 contact_id=contact_id,
                 recommendation_type="next_action",
@@ -152,7 +168,7 @@ Provide a specific, actionable recommendation (1-2 sentences max)."""
     
     @staticmethod
     def _generate_best_time(db: Session, user_id: int, contact_id: int, 
-                           profile: CustomerProfile) -> Optional[AIRecommendation]:
+                           profile: CustomerProfile, workspace_id: Optional[int] = None) -> Optional[AIRecommendation]:
         """Generate best time to contact recommendation"""
         try:
             if not profile or not getattr(profile, "response_time_avg", None):
@@ -169,6 +185,7 @@ Provide a specific, actionable recommendation (1-2 sentences max)."""
                 time_recommendation = "This contact responds slowly. Plan follow-ups at least 48 hours apart."
             
             rec = AIRecommendation(
+                workspace_id=workspace_id,
                 user_id=user_id,
                 contact_id=contact_id,
                 recommendation_type="best_time",
@@ -189,7 +206,8 @@ Provide a specific, actionable recommendation (1-2 sentences max)."""
     
     @staticmethod
     def _generate_followup_recommendation(db: Session, user_id: int, 
-                                        contact_id: int, days_since: int) -> Optional[AIRecommendation]:
+                                        contact_id: int, days_since: int,
+                                        workspace_id: Optional[int] = None) -> Optional[AIRecommendation]:
         """Generate follow-up needed recommendation"""
         try:
             if days_since < 3:
@@ -198,6 +216,7 @@ Provide a specific, actionable recommendation (1-2 sentences max)."""
             urgency = "urgent" if days_since > 7 else "recommended"
             
             rec = AIRecommendation(
+                workspace_id=workspace_id,
                 user_id=user_id,
                 contact_id=contact_id,
                 recommendation_type="follow_up_needed",
@@ -218,7 +237,8 @@ Provide a specific, actionable recommendation (1-2 sentences max)."""
     
     @staticmethod
     def _generate_deal_recommendation(db: Session, user_id: int, deal: Deal, 
-                                    contact: Contact, profile: Optional[CustomerProfile]) -> Optional[AIRecommendation]:
+                                    contact: Contact, profile: Optional[CustomerProfile],
+                                    workspace_id: Optional[int] = None) -> Optional[AIRecommendation]:
         """Generate deal-specific recommendation"""
         try:
             if deal.probability < 30:
@@ -235,6 +255,7 @@ Provide a specific, actionable recommendation (1-2 sentences max)."""
                 confidence = 0.75
             
             rec = AIRecommendation(
+                workspace_id=workspace_id,
                 user_id=user_id,
                 deal_id=deal.id,
                 contact_id=contact.id,
@@ -298,16 +319,20 @@ Provide a specific, actionable recommendation (1-2 sentences max)."""
     
     @staticmethod
     def get_active_recommendations(db: Session, user_id: int, 
-                                  limit: int = 10) -> List[Dict]:
+                                  limit: int = 10,
+                                  workspace_id: Optional[int] = None) -> List[Dict]:
         """Get active (non-expired, non-dismissed) recommendations for user"""
         try:
-            recommendations = db.query(AIRecommendation).filter(
+            query = db.query(AIRecommendation).filter(
                 and_(
                     AIRecommendation.user_id == user_id,
                     AIRecommendation.status == "pending",
                     AIRecommendation.expires_at > datetime.utcnow()
                 )
-            ).order_by(desc(AIRecommendation.confidence_score)).limit(limit).all()
+            )
+            if workspace_id is not None:
+                query = query.filter(AIRecommendation.workspace_id == workspace_id)
+            recommendations = query.order_by(desc(AIRecommendation.confidence_score)).limit(limit).all()
             
             result = []
             for rec in recommendations:
@@ -330,12 +355,15 @@ Provide a specific, actionable recommendation (1-2 sentences max)."""
             return []
     
     @staticmethod
-    def mark_recommendation_actioned(db: Session, recommendation_id: int) -> bool:
+    def mark_recommendation_actioned(db: Session, recommendation_id: int, workspace_id: Optional[int] = None) -> bool:
         """Mark recommendation as actioned"""
         try:
-            rec = db.query(AIRecommendation).filter(
+            query = db.query(AIRecommendation).filter(
                 AIRecommendation.id == recommendation_id
-            ).first()
+            )
+            if workspace_id is not None:
+                query = query.filter(AIRecommendation.workspace_id == workspace_id)
+            rec = query.first()
             
             if rec:
                 rec.status = "actioned"

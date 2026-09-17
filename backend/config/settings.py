@@ -22,6 +22,8 @@ class Settings:
     jwt_secret_key = os.getenv("JWT_SECRET_KEY", os.getenv("SECRET_KEY", "dev-only-change-me"))
     jwt_algorithm = os.getenv("JWT_ALGORITHM", "HS256")
     token_encryption_key = os.getenv("TOKEN_ENCRYPTION_KEY", "")
+    jwt_access_token_expire_minutes = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "15"))
+    jwt_refresh_token_expire_days = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
     google_client_id = os.getenv("GOOGLE_CLIENT_ID", "")
     google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")

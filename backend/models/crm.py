@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, synonym
 
 from database import Base
 
@@ -115,29 +115,9 @@ class Deal(Base, TimestampMixin):
     contact = relationship("models.crm.Contact", foreign_keys=[contact_id])
     activities = relationship("DealActivity", back_populates="deal", cascade="all, delete-orphan")
 
-    @property
-    def name(self):
-        return self.title
-
-    @name.setter
-    def name(self, value):
-        self.title = value
-
-    @property
-    def expected_close_date(self):
-        return self.expected_close_at
-
-    @expected_close_date.setter
-    def expected_close_date(self, value):
-        self.expected_close_at = value
-
-    @property
-    def actual_close_date(self):
-        return self.actual_close_at
-
-    @actual_close_date.setter
-    def actual_close_date(self, value):
-        self.actual_close_at = value
+    name = synonym("title")
+    expected_close_date = synonym("expected_close_at")
+    actual_close_date = synonym("actual_close_at")
 
 
 class DealActivity(Base, TimestampMixin):
@@ -174,9 +154,7 @@ class CustomerProfile(Base, TimestampMixin):
 
     contact = relationship("models.crm.Contact", foreign_keys=[contact_id])
 
-    @property
-    def last_updated_at(self):
-        return self.updated_at
+    last_updated_at = synonym("updated_at")
 
 
 class Campaign(Base, TimestampMixin):

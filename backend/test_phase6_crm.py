@@ -7,8 +7,10 @@ from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from auth.models import (
-    Base, User, Contact, Lead, Deal, DealActivity, CustomerProfile, 
-    ContactRelationship, AIRecommendation, Email, Activity
+    Base, User, Email, ContactRelationship, AIRecommendation
+)
+from models.crm_unified import (
+    Contact, Lead, Deal, DealActivity, CustomerProfile, Activity
 )
 from services.deal_service import DealService
 from services.profile_service import CustomerProfileService
@@ -50,8 +52,7 @@ def test_contact(test_db: Session, test_user: User):
         name="John Doe",
         company="ACME Corp",
         title="Manager",
-        interaction_count=5,
-        score=75
+        relationship_score=75.0
     )
     test_db.add(contact)
     test_db.commit()
@@ -196,7 +197,6 @@ class TestRelationshipService:
             contacts.append(contact)
         test_db.commit()
         
-        # Link contacts
         RelationshipService.link_contacts(test_db, test_user.id, contacts[0].id, contacts[1].id)
         RelationshipService.link_contacts(test_db, test_user.id, contacts[1].id, contacts[2].id)
         
@@ -259,9 +259,9 @@ class TestRecommendationEngine:
         """Test best time recommendation"""
         profile = CustomerProfile(
             contact_id=test_contact.id,
-            user_id=test_user.id,
-            response_time_avg=2.5
+            user_id=test_user.id
         )
+        profile.response_time_avg = 2.5
         test_db.add(profile)
         test_db.commit()
         

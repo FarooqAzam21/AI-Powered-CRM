@@ -11,19 +11,12 @@ from services.winloss_service import WinLossService
 from services.sales_cycle_service import SalesCycleService
 from services.forecast_service import ForecastService
 from services.territory_service import TerritoryService
-from database import SessionLocal
+from database import SessionLocal, get_db
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/analytics", tags=["Analytics"])
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 # =================== WIN/LOSS ANALYSIS ENDPOINTS ===================
 
@@ -41,7 +34,7 @@ async def record_deal_outcome(
             raise HTTPException(status_code=400, detail="Outcome must be 'won' or 'lost'")
         
         analysis = WinLossService.analyze_closed_deal(
-            db, current_user.id, deal_id, outcome, competitor
+            db, current_user.id, deal_id, outcome, competitor, workspace_id=current_user.workspace_id
         )
         
         if not analysis:
@@ -66,7 +59,7 @@ async def get_win_loss_summary(
 ):
     """Get win/loss analysis summary"""
     try:
-        summary = WinLossService.get_win_loss_summary(db, current_user.id, days)
+        summary = WinLossService.get_win_loss_summary(db, current_user.id, days, workspace_id=current_user.workspace_id)
         return {
             "status": "success",
             "data": summary
@@ -82,7 +75,7 @@ async def get_winning_factors(
 ):
     """Get top winning factors"""
     try:
-        summary = WinLossService.get_win_loss_summary(db, current_user.id)
+        summary = WinLossService.get_win_loss_summary(db, current_user.id, workspace_id=current_user.workspace_id)
         return {
             "status": "success",
             "factors": summary.get("top_win_factors", [])
@@ -97,7 +90,7 @@ async def get_losing_factors(
 ):
     """Get top losing factors"""
     try:
-        summary = WinLossService.get_win_loss_summary(db, current_user.id)
+        summary = WinLossService.get_win_loss_summary(db, current_user.id, workspace_id=current_user.workspace_id)
         return {
             "status": "success",
             "factors": summary.get("top_loss_factors", [])
@@ -112,7 +105,7 @@ async def get_competitor_analysis(
 ):
     """Analyze losses by competitor"""
     try:
-        competitors = WinLossService.get_competitor_analysis(db, current_user.id)
+        competitors = WinLossService.get_competitor_analysis(db, current_user.id, workspace_id=current_user.workspace_id)
         return {
             "status": "success",
             "competitors": competitors
@@ -133,7 +126,7 @@ async def calculate_sales_cycle_metrics(
         if period_type not in ["monthly", "quarterly", "yearly"]:
             raise HTTPException(status_code=400, detail="Invalid period_type")
         
-        metrics = SalesCycleService.calculate_cycle_metrics(db, current_user.id, period_type)
+        metrics = SalesCycleService.calculate_cycle_metrics(db, current_user.id, period_type, workspace_id=current_user.workspace_id)
         
         if not metrics:
             raise HTTPException(status_code=500, detail="Calculation failed")
@@ -159,7 +152,7 @@ async def get_sales_cycle_metrics(
 ):
     """Get latest sales cycle metrics"""
     try:
-        metrics = SalesCycleService.calculate_cycle_metrics(db, current_user.id)
+        metrics = SalesCycleService.calculate_cycle_metrics(db, current_user.id, workspace_id=current_user.workspace_id)
         if not metrics:
             raise HTTPException(status_code=404, detail="No cycle metrics found")
         
@@ -178,7 +171,7 @@ async def get_sales_velocity(
 ):
     """Get sales velocity (deals/revenue per day)"""
     try:
-        velocity = SalesCycleService.get_sales_velocity(db, current_user.id, days)
+        velocity = SalesCycleService.get_sales_velocity(db, current_user.id, days, workspace_id=current_user.workspace_id)
         return {
             "status": "success",
             "data": velocity
@@ -193,7 +186,7 @@ async def get_bottlenecks(
 ):
     """Identify pipeline bottlenecks"""
     try:
-        bottlenecks = SalesCycleService.get_bottleneck_analysis(db, current_user.id)
+        bottlenecks = SalesCycleService.get_bottleneck_analysis(db, current_user.id, workspace_id=current_user.workspace_id)
         return {
             "status": "success",
             "bottlenecks": bottlenecks
@@ -212,7 +205,7 @@ async def record_forecast(
 ):
     """Record a monthly forecast"""
     try:
-        forecast = ForecastService.record_forecast(db, current_user.id, month, forecasted_revenue)
+        forecast = ForecastService.record_forecast(db, current_user.id, month, forecasted_revenue, workspace_id=current_user.workspace_id)
         if not forecast:
             raise HTTPException(status_code=500, detail="Forecast recording failed")
         
@@ -232,7 +225,7 @@ async def close_forecast_month(
 ):
     """Close out a month and calculate forecast accuracy"""
     try:
-        forecast = ForecastService.calculate_month_accuracy(db, current_user.id, month)
+        forecast = ForecastService.calculate_month_accuracy(db, current_user.id, month, workspace_id=current_user.workspace_id)
         if not forecast:
             raise HTTPException(status_code=404, detail="Forecast not found")
         
@@ -254,7 +247,7 @@ async def get_forecast_accuracy(
 ):
     """Get forecast accuracy trends"""
     try:
-        trends = ForecastService.get_accuracy_trends(db, current_user.id)
+        trends = ForecastService.get_accuracy_trends(db, current_user.id, workspace_id=current_user.workspace_id)
         return {
             "status": "success",
             "trends": trends
@@ -269,7 +262,7 @@ async def get_forecast_drivers(
 ):
     """Identify forecast accuracy drivers"""
     try:
-        drivers = ForecastService.identify_forecast_drivers(db, current_user.id)
+        drivers = ForecastService.identify_forecast_drivers(db, current_user.id, workspace_id=current_user.workspace_id)
         return {
             "status": "success",
             "drivers": drivers
@@ -289,7 +282,7 @@ async def create_territory(
     """Create or update territory metrics"""
     try:
         metrics = TerritoryService.create_territory_metrics(
-            db, current_user.id, territory_name, territory_type
+            db, current_user.id, territory_name, territory_type, workspace_id=current_user.workspace_id
         )
         if not metrics:
             raise HTTPException(status_code=500, detail="Territory creation failed")
@@ -312,7 +305,7 @@ async def list_territories(
 ):
     """Compare all territories"""
     try:
-        comparison = TerritoryService.get_territory_comparison(db, current_user.id)
+        comparison = TerritoryService.get_territory_comparison(db, current_user.id, workspace_id=current_user.workspace_id)
         return {
             "status": "success",
             "data": comparison
@@ -327,7 +320,7 @@ async def get_opportunity_analysis(
 ):
     """Get territory opportunity analysis"""
     try:
-        comparison = TerritoryService.get_territory_comparison(db, current_user.id)
+        comparison = TerritoryService.get_territory_comparison(db, current_user.id, workspace_id=current_user.workspace_id)
         return {
             "status": "success",
             "opportunities": comparison.get("opportunities", [])
@@ -342,7 +335,7 @@ async def get_risk_analysis(
 ):
     """Get territory risk analysis"""
     try:
-        comparison = TerritoryService.get_territory_comparison(db, current_user.id)
+        comparison = TerritoryService.get_territory_comparison(db, current_user.id, workspace_id=current_user.workspace_id)
         return {
             "status": "success",
             "at_risk": comparison.get("at_risk", [])
@@ -357,7 +350,7 @@ async def get_optimization_recommendations(
 ):
     """Get territory optimization recommendations"""
     try:
-        recommendations = TerritoryService.get_optimization_recommendations(db, current_user.id)
+        recommendations = TerritoryService.get_optimization_recommendations(db, current_user.id, workspace_id=current_user.workspace_id)
         return {
             "status": "success",
             "recommendations": recommendations

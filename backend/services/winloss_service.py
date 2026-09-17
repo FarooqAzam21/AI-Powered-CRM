@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
 from auth.models import WinLossAnalysis, Email
 from models.crm import Deal, Contact, Activity, DealActivity
-from ai.ollama_client import generate_cached
 from typing import Optional, List, Dict
 
 logger = logging.getLogger(__name__)
@@ -19,13 +18,17 @@ class WinLossService:
     
     @staticmethod
     def analyze_closed_deal(db: Session, user_id: int, deal_id: int, 
-                           outcome: str, competitor: Optional[str] = None) -> Optional[WinLossAnalysis]:
+                           outcome: str, competitor: Optional[str] = None,
+                           workspace_id: Optional[int] = None) -> Optional[WinLossAnalysis]:
         """
         Analyze a closed deal to extract patterns
         outcome: 'won' or 'lost'
         """
         try:
-            deal = db.query(Deal).filter(Deal.id == deal_id).first()
+            deal_q = db.query(Deal).filter(Deal.id == deal_id)
+            if workspace_id is not None:
+                deal_q = deal_q.filter(Deal.workspace_id == workspace_id)
+            deal = deal_q.first()
             if not deal:
                 logger.error(f"Deal {deal_id} not found")
                 return None
@@ -56,7 +59,9 @@ class WinLossService:
             lessons = WinLossService._extract_lessons(outcome, key_factors, root_cause)
             
             # Create analysis record
+            target_workspace_id = workspace_id or getattr(deal, 'workspace_id', None)
             analysis = WinLossAnalysis(
+                workspace_id=target_workspace_id,
                 user_id=user_id,
                 deal_id=deal_id,
                 outcome=outcome,
@@ -158,17 +163,20 @@ class WinLossService:
         return lessons
     
     @staticmethod
-    def get_win_loss_summary(db: Session, user_id: int, days: int = 90) -> Dict:
+    def get_win_loss_summary(db: Session, user_id: int, days: int = 90, workspace_id: Optional[int] = None) -> Dict:
         """Get win/loss summary statistics"""
         try:
             cutoff_date = datetime.utcnow() - timedelta(days=days)
             
-            analyses = db.query(WinLossAnalysis).filter(
+            query = db.query(WinLossAnalysis).filter(
                 and_(
                     WinLossAnalysis.user_id == user_id,
                     WinLossAnalysis.created_at >= cutoff_date
                 )
-            ).all()
+            )
+            if workspace_id is not None:
+                query = query.filter(WinLossAnalysis.workspace_id == workspace_id)
+            analyses = query.all()
             
             won = [a for a in analyses if a.outcome == "won"]
             lost = [a for a in analyses if a.outcome == "lost"]
@@ -217,15 +225,18 @@ class WinLossService:
         return [f[0] for f in sorted_factors[:limit]]
     
     @staticmethod
-    def get_competitor_analysis(db: Session, user_id: int) -> Dict:
+    def get_competitor_analysis(db: Session, user_id: int, workspace_id: Optional[int] = None) -> Dict:
         """Analyze losses by competitor"""
         try:
-            lost_deals = db.query(WinLossAnalysis).filter(
+            query = db.query(WinLossAnalysis).filter(
                 and_(
                     WinLossAnalysis.user_id == user_id,
                     WinLossAnalysis.outcome == "lost"
                 )
-            ).all()
+            )
+            if workspace_id is not None:
+                query = query.filter(WinLossAnalysis.workspace_id == workspace_id)
+            lost_deals = query.all()
             
             competitor_stats = {}
             for deal in lost_deals:

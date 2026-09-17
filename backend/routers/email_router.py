@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import or_
@@ -7,11 +8,13 @@ from ai.ai_generator import get_ai_generator
 from auth.dependencies import get_current_user
 from auth.models import User
 from database import get_db
-from gmail_service import fetch_email_body
+from gmail_service import fetch_email_body, send_gmail_reply
 from models.crm import Contact, EmailMetadata
 from services.email_classification_service import apply_learned_rule, learn_rule_from_email
 from tasks.task_router import enqueue_task
 from utils.sanitize import sanitize_email_html, sanitize_text
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/email", tags=["Email"])
 
@@ -36,12 +39,13 @@ def _user(db: Session, token: dict) -> User:
 @router.post("/sync")
 def start_sync(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     user = _user(db, current_user)
+    workspace_id = current_user.get("workspace_id")
     if not user.gmail_connected:
         raise HTTPException(400, "Gmail is not connected")
     task = enqueue_task(
         "workers.email_tasks.sync_gmail_metadata",
         "email",
-        {"user_id": user.id, "recent_first": True},
+        {"user_id": user.id, "workspace_id": workspace_id, "recent_first": True},
         user_id=user.id,
     )
     return {"task_id": task["id"], "status": task["status"], "result": task.get("result")}
@@ -75,7 +79,10 @@ def list_metadata(
     db: Session = Depends(get_db),
 ):
     user = _user(db, current_user)
+    workspace_id = current_user.get("workspace_id")
     query = db.query(EmailMetadata).filter(EmailMetadata.user_id == user.id)
+    if workspace_id is not None:
+        query = query.filter(EmailMetadata.workspace_id == workspace_id)
     if q:
         term = f"%{sanitize_text(q, 120)}%"
         query = query.outerjoin(
@@ -96,7 +103,10 @@ def list_metadata(
     for meta in rows:
         contact = None
         if meta.sender_email:
-            contact = db.query(Contact).filter(Contact.user_id == user.id, Contact.email == meta.sender_email).first()
+            cq = db.query(Contact).filter(Contact.user_id == user.id, Contact.email == meta.sender_email)
+            if workspace_id is not None:
+                cq = cq.filter(Contact.workspace_id == workspace_id)
+            contact = cq.first()
         results.append(_serialize_email_meta(meta, contact))
     return results
 
@@ -110,7 +120,10 @@ def search_metadata(
     db: Session = Depends(get_db),
 ):
     user = _user(db, current_user)
+    workspace_id = current_user.get("workspace_id")
     query = db.query(EmailMetadata).filter(EmailMetadata.user_id == user.id)
+    if workspace_id is not None:
+        query = query.filter(EmailMetadata.workspace_id == workspace_id)
     if q:
         term = f"%{sanitize_text(q, 120)}%"
         query = query.outerjoin(
@@ -131,7 +144,10 @@ def search_metadata(
     for meta in rows:
         contact = None
         if meta.sender_email:
-            contact = db.query(Contact).filter(Contact.user_id == user.id, Contact.email == meta.sender_email).first()
+            cq = db.query(Contact).filter(Contact.user_id == user.id, Contact.email == meta.sender_email)
+            if workspace_id is not None:
+                cq = cq.filter(Contact.workspace_id == workspace_id)
+            contact = cq.first()
         results.append(_serialize_email_meta(meta, contact))
     return results
 
@@ -144,13 +160,20 @@ def get_email(
     db: Session = Depends(get_db),
 ):
     user = _user(db, current_user)
-    meta = db.query(EmailMetadata).filter(EmailMetadata.user_id == user.id, EmailMetadata.gmail_message_id == gmail_message_id).first()
+    workspace_id = current_user.get("workspace_id")
+    query = db.query(EmailMetadata).filter(EmailMetadata.user_id == user.id, EmailMetadata.gmail_message_id == gmail_message_id)
+    if workspace_id is not None:
+        query = query.filter(EmailMetadata.workspace_id == workspace_id)
+    meta = query.first()
     if not meta:
         raise HTTPException(404, "Email not found")
 
     contact = None
     if meta.sender_email:
-        contact = db.query(Contact).filter(Contact.user_id == user.id, Contact.email == meta.sender_email).first()
+        cq = db.query(Contact).filter(Contact.user_id == user.id, Contact.email == meta.sender_email)
+        if workspace_id is not None:
+            cq = cq.filter(Contact.workspace_id == workspace_id)
+        contact = cq.first()
 
     email_data = _serialize_email_meta(meta, contact)
     email_data["recipient"] = user.email
@@ -173,7 +196,11 @@ def get_email(
 @router.get("/body/{gmail_message_id}")
 def get_body(gmail_message_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     user = _user(db, current_user)
-    meta = db.query(EmailMetadata).filter(EmailMetadata.user_id == user.id, EmailMetadata.gmail_message_id == gmail_message_id).first()
+    workspace_id = current_user.get("workspace_id")
+    query = db.query(EmailMetadata).filter(EmailMetadata.user_id == user.id, EmailMetadata.gmail_message_id == gmail_message_id)
+    if workspace_id is not None:
+        query = query.filter(EmailMetadata.workspace_id == workspace_id)
+    meta = query.first()
     if not meta:
         raise HTTPException(404, "Email not found")
     body = fetch_email_body(user, gmail_message_id)
@@ -187,7 +214,11 @@ def get_body(gmail_message_id: str, current_user: dict = Depends(get_current_use
 @router.post("/classify/{gmail_message_id}")
 async def classify_synced_email(gmail_message_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     user = _user(db, current_user)
-    meta = db.query(EmailMetadata).filter(EmailMetadata.user_id == user.id, EmailMetadata.gmail_message_id == gmail_message_id).first()
+    workspace_id = current_user.get("workspace_id")
+    query = db.query(EmailMetadata).filter(EmailMetadata.user_id == user.id, EmailMetadata.gmail_message_id == gmail_message_id)
+    if workspace_id is not None:
+        query = query.filter(EmailMetadata.workspace_id == workspace_id)
+    meta = query.first()
     if not meta:
         raise HTTPException(404, "Email not found")
 
@@ -230,7 +261,11 @@ def manually_classify_synced_email(
     db: Session = Depends(get_db),
 ):
     user = _user(db, current_user)
-    meta = db.query(EmailMetadata).filter(EmailMetadata.user_id == user.id, EmailMetadata.gmail_message_id == gmail_message_id).first()
+    workspace_id = current_user.get("workspace_id")
+    query = db.query(EmailMetadata).filter(EmailMetadata.user_id == user.id, EmailMetadata.gmail_message_id == gmail_message_id)
+    if workspace_id is not None:
+        query = query.filter(EmailMetadata.workspace_id == workspace_id)
+    meta = query.first()
     if not meta:
         raise HTTPException(404, "Email not found")
 
@@ -253,8 +288,11 @@ def manually_classify_synced_email(
 @router.post("/classify")
 async def classify_synced_email_batch(payload: ClassifyBatchRequest, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     user = _user(db, current_user)
+    workspace_id = current_user.get("workspace_id")
     limit = min(max(payload.limit, 1), 25)
     query = db.query(EmailMetadata).filter(EmailMetadata.user_id == user.id)
+    if workspace_id is not None:
+        query = query.filter(EmailMetadata.workspace_id == workspace_id)
     if payload.ids:
         query = query.filter(EmailMetadata.gmail_message_id.in_(payload.ids))
     else:
@@ -303,7 +341,9 @@ async def classify_synced_email_batch(payload: ClassifyBatchRequest, current_use
 @router.post("/draft")
 def request_draft(payload: dict, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
     user = _user(db, current_user)
-    task = enqueue_task("workers.email_tasks.generate_reply", "ai", payload, user_id=user.id)
+    workspace_id = current_user.get("workspace_id")
+    payload_with_ws = {**payload, "workspace_id": workspace_id}
+    task = enqueue_task("workers.email_tasks.generate_reply", "ai", payload_with_ws, user_id=user.id)
     return {"task_id": task["id"], "status": task["status"]}
 
 
@@ -315,13 +355,20 @@ def get_email_context(
     db: Session = Depends(get_db),
 ):
     user = _user(db, current_user)
-    meta = db.query(EmailMetadata).filter(EmailMetadata.user_id == user.id, EmailMetadata.gmail_message_id == gmail_message_id).first()
+    workspace_id = current_user.get("workspace_id")
+    query = db.query(EmailMetadata).filter(EmailMetadata.user_id == user.id, EmailMetadata.gmail_message_id == gmail_message_id)
+    if workspace_id is not None:
+        query = query.filter(EmailMetadata.workspace_id == workspace_id)
+    meta = query.first()
     if not meta:
         raise HTTPException(404, "Email not found")
 
     contact = None
     if meta.sender_email:
-        contact = db.query(Contact).filter(Contact.user_id == user.id, Contact.email == meta.sender_email).first()
+        cq = db.query(Contact).filter(Contact.user_id == user.id, Contact.email == meta.sender_email)
+        if workspace_id is not None:
+            cq = cq.filter(Contact.workspace_id == workspace_id)
+        contact = cq.first()
 
     email_data = _serialize_email_meta(meta, contact)
     email_data["recipient"] = user.email
@@ -345,3 +392,78 @@ def get_email_context(
     }
 
     return email_data
+
+
+class SendReplyRequest(BaseModel):
+    recipient_email: str
+    subject: str = "Reply"
+    body: str
+    thread_id: str | None = None
+    gmail_message_id: str | None = None
+
+
+@router.post("/send-reply")
+def send_reply_email(
+    payload: SendReplyRequest,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user = _user(db, current_user)
+    recipient = sanitize_text(payload.recipient_email, 254).strip()
+    if not recipient:
+        raise HTTPException(status_code=400, detail="Recipient email is required")
+    if not payload.body or not payload.body.strip():
+        raise HTTPException(status_code=400, detail="Email body cannot be empty")
+
+    subject = sanitize_text(payload.subject or "Reply", 200).strip()
+    body_text = payload.body.strip()
+
+    # If Gmail is connected, send real email via Gmail API
+    if user.gmail_connected and user.google_access_token:
+        try:
+            result = send_gmail_reply(
+                user=user,
+                to=recipient,
+                subject=subject,
+                body=body_text,
+                thread_id=payload.thread_id,
+            )
+            if result:
+                # Log CRM activity
+                try:
+                    from models.crm import Activity
+                    contact = db.query(Contact).filter(Contact.user_id == user.id, Contact.email == recipient).first()
+                    if contact:
+                        act = Activity(
+                            contact_id=contact.id,
+                            user_id=user.id,
+                            type="email_sent",
+                            notes=f"Sent email reply: {subject}",
+                        )
+                        db.add(act)
+                        db.commit()
+                except Exception as log_err:
+                    logger.warning("Could not log email activity: %s", log_err)
+
+                return {
+                    "status": "success",
+                    "mode": "live",
+                    "message": f"Reply successfully sent to {recipient} via Gmail.",
+                    "details": result,
+                }
+            else:
+                raise HTTPException(status_code=500, detail="Gmail service failed to dispatch the message.")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.error("Error sending Gmail reply: %s", exc)
+            raise HTTPException(status_code=500, detail=f"Failed to send email via Gmail: {exc}")
+
+    # Development or fallback mode when Gmail is not connected
+    logger.info("Simulated send email to %s: subject='%s', length=%d", recipient, subject, len(body_text))
+    return {
+        "status": "success",
+        "mode": "simulated",
+        "message": f"Reply sent to {recipient} (Simulated mode: connect Gmail in Settings to dispatch live emails).",
+    }
+

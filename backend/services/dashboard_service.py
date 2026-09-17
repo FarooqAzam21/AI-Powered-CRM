@@ -6,11 +6,12 @@ import logging
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
+from models.crm_unified import Deal, Contact, Activity
 from auth.models import (
-    Deal, Contact, Activity, WinLossAnalysis, TerritoryMetrics, 
+    WinLossAnalysis, TerritoryMetrics, 
     ForecastAccuracy, AIRecommendation
 )
-from websocket.dashboard_models import (
+from ws_manager.dashboard_models import (
     DealUpdateEvent, DealStageChangeEvent, DealClosedEvent,
     TerritoryMetricsEvent, TerritoryOpportunityAlert, TerritoryRiskAlert,
     ForecastUpdateEvent, ForecastAlertEvent, WinLossAnalysisEvent,
@@ -25,10 +26,13 @@ class DashboardService:
     """Service for generating real-time dashboard events and metrics"""
     
     @staticmethod
-    def get_pipeline_snapshot(db: Session, user_id: int) -> PipelineSnapshot:
+    def get_pipeline_snapshot(db: Session, user_id: int, workspace_id: Optional[int] = None) -> PipelineSnapshot:
         """Get real-time pipeline snapshot"""
         try:
-            deals = db.query(Deal).filter(Deal.user_id == user_id).all()
+            query = db.query(Deal).filter(Deal.user_id == user_id)
+            if workspace_id is not None:
+                query = query.filter(Deal.workspace_id == workspace_id)
+            deals = query.all()
             
             # Group by stage
             stages = {}
@@ -102,12 +106,13 @@ class DashboardService:
             return None
     
     @staticmethod
-    def get_territory_snapshot(db: Session, user_id: int) -> TerritorySnapshot:
+    def get_territory_snapshot(db: Session, user_id: int, workspace_id: Optional[int] = None) -> TerritorySnapshot:
         """Get real-time territory performance snapshot"""
         try:
-            territories = db.query(TerritoryMetrics).filter(
-                TerritoryMetrics.user_id == user_id
-            ).all()
+            query = db.query(TerritoryMetrics).filter(TerritoryMetrics.user_id == user_id)
+            if workspace_id is not None:
+                query = query.filter(TerritoryMetrics.workspace_id == workspace_id)
+            territories = query.all()
             
             territory_data = {}
             for territory in territories:
@@ -149,36 +154,50 @@ class DashboardService:
             return None
     
     @staticmethod
-    def get_dashboard_metrics(db: Session, user_id: int) -> Optional[DashboardMetrics]:
+    def get_dashboard_metrics(db: Session, user_id: int, workspace_id: Optional[int] = None) -> Optional[DashboardMetrics]:
         """Get current dashboard metrics"""
         try:
-            deals = db.query(Deal).filter(Deal.user_id == user_id).all()
-            activities = db.query(Activity).filter(
+            deal_q = db.query(Deal).filter(Deal.user_id == user_id)
+            if workspace_id is not None:
+                deal_q = deal_q.filter(Deal.workspace_id == workspace_id)
+            deals = deal_q.all()
+
+            act_q = db.query(Activity).filter(
                 Activity.created_at >= datetime.utcnow() - timedelta(days=7)
-            ).all()
+            )
+            if workspace_id is not None and hasattr(Activity, "workspace_id"):
+                act_q = act_q.filter(Activity.workspace_id == workspace_id)
+            activities = act_q.all()
             
             open_deals = [d for d in deals if d.status in ["open", "active"]]
             won_deals = [d for d in deals if d.status == "won"]
             lost_deals = [d for d in deals if d.status == "lost"]
             
             # Territory metrics
-            territories = db.query(TerritoryMetrics).filter(
-                TerritoryMetrics.user_id == user_id
-            ).all()
+            terr_q = db.query(TerritoryMetrics).filter(TerritoryMetrics.user_id == user_id)
+            if workspace_id is not None:
+                terr_q = terr_q.filter(TerritoryMetrics.workspace_id == workspace_id)
+            territories = terr_q.all()
             at_risk_territories = [t for t in territories if t.risk_score > 60]
             high_opp_territories = [t for t in territories if t.opportunity_score > 70]
             
             # Forecast
             current_month = datetime.utcnow().strftime("%Y-%m")
-            forecast = db.query(ForecastAccuracy).filter(
+            fore_q = db.query(ForecastAccuracy).filter(
                 and_(
                     ForecastAccuracy.user_id == user_id,
                     ForecastAccuracy.forecast_month == current_month
                 )
-            ).first()
+            )
+            if workspace_id is not None:
+                fore_q = fore_q.filter(ForecastAccuracy.workspace_id == workspace_id)
+            forecast = fore_q.first()
             
             # Contacts
-            contacts = db.query(Contact).filter(Contact.user_id == user_id).all()
+            cont_q = db.query(Contact).filter(Contact.user_id == user_id)
+            if workspace_id is not None:
+                cont_q = cont_q.filter(Contact.workspace_id == workspace_id)
+            contacts = cont_q.all()
             recent_contacts = [c for c in contacts if 
                               db.query(Activity).filter(Activity.contact_id == c.id).first()]
             
@@ -211,6 +230,12 @@ class DashboardService:
         """Generate real-time deal update event"""
         try:
             deal = db.query(Deal).filter(Deal.id == deal_id).first()
+            if not deal:
+                try:
+                    from auth.models import Deal as LegacyDeal
+                    deal = db.query(LegacyDeal).filter(LegacyDeal.id == deal_id).first()
+                except Exception:
+                    pass
             if not deal:
                 return None
             
@@ -250,6 +275,12 @@ class DashboardService:
         """Generate deal closed event"""
         try:
             deal = db.query(Deal).filter(Deal.id == deal_id).first()
+            if not deal:
+                try:
+                    from auth.models import Deal as LegacyDeal
+                    deal = db.query(LegacyDeal).filter(LegacyDeal.id == deal_id).first()
+                except Exception:
+                    pass
             if not deal:
                 return None
             
@@ -308,24 +339,30 @@ class DashboardService:
             return []
     
     @staticmethod
-    def generate_forecast_alert(db: Session, user_id: int) -> Optional[Dict]:
+    def generate_forecast_alert(db: Session, user_id: int, workspace_id: Optional[int] = None) -> Optional[Dict]:
         """Generate forecast status alert"""
         try:
             current_month = datetime.utcnow().strftime("%Y-%m")
-            forecast = db.query(ForecastAccuracy).filter(
+            fore_q = db.query(ForecastAccuracy).filter(
                 and_(
                     ForecastAccuracy.user_id == user_id,
                     ForecastAccuracy.forecast_month == current_month
                 )
-            ).first()
+            )
+            if workspace_id is not None:
+                fore_q = fore_q.filter(ForecastAccuracy.workspace_id == workspace_id)
+            forecast = fore_q.first()
             
             if not forecast:
                 return None
             
             # Get current pipeline
-            deals = db.query(Deal).filter(
+            deal_q = db.query(Deal).filter(
                 and_(Deal.user_id == user_id, Deal.status == "open")
-            ).all()
+            )
+            if workspace_id is not None:
+                deal_q = deal_q.filter(Deal.workspace_id == workspace_id)
+            deals = deal_q.all()
             current_pipeline = sum(d.value for d in deals)
             
             # Determine status

@@ -7,9 +7,10 @@ from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from auth.models import (
-    Base, User, Deal, Contact, Activity, Email, DealActivity,
+    Base, User, Email,
     WinLossAnalysis, SalesCycleMetrics, ForecastAccuracy, TerritoryMetrics
 )
+from models.crm_unified import Deal, Contact, Activity, DealActivity
 from services.winloss_service import WinLossService
 from services.sales_cycle_service import SalesCycleService
 from services.forecast_service import ForecastService

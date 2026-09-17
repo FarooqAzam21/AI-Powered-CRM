@@ -31,10 +31,18 @@ class ActivityTimelineService:
     def record_activity(db: Session, user_id: int, contact_id: Optional[int],
                        activity_type: str, subject: Optional[str] = None,
                        description: Optional[str] = None, 
-                       direction: str = "outbound") -> Activity:
+                       direction: str = "outbound",
+                       workspace_id: Optional[int] = None) -> Activity:
         """Record a new activity"""
         try:
+            target_ws = workspace_id
+            if target_ws is None and contact_id:
+                c = db.query(Contact).filter(Contact.id == contact_id).first()
+                if c and hasattr(c, "workspace_id"):
+                    target_ws = c.workspace_id
+
             activity = Activity(
+                workspace_id=target_ws,
                 user_id=user_id,
                 contact_id=contact_id,
                 type=activity_type,
@@ -56,7 +64,8 @@ class ActivityTimelineService:
     
     @staticmethod
     def get_contact_timeline(db: Session, contact_id: int, 
-                           days: int = 30, limit: int = 50) -> List[Dict]:
+                           days: int = 30, limit: int = 50,
+                           workspace_id: Optional[int] = None) -> List[Dict]:
         """
         Get complete activity timeline for a contact
         Returns chronological list of all interactions
@@ -64,19 +73,25 @@ class ActivityTimelineService:
         try:
             cutoff_date = datetime.utcnow() - timedelta(days=days)
             
-            activities = db.query(Activity).filter(
+            act_q = db.query(Activity).filter(
                 and_(
                     Activity.contact_id == contact_id,
                     Activity.created_at >= cutoff_date
                 )
-            ).order_by(desc(Activity.created_at)).limit(limit).all()
+            )
+            if workspace_id is not None:
+                act_q = act_q.filter(Activity.workspace_id == workspace_id)
+            activities = act_q.order_by(desc(Activity.created_at)).limit(limit).all()
             
-            interactions = db.query(Interaction).filter(
+            inter_q = db.query(Interaction).filter(
                 and_(
                     Interaction.contact_id == contact_id,
                     Interaction.occurred_at >= cutoff_date
                 )
-            ).order_by(desc(Interaction.occurred_at)).all()
+            )
+            if workspace_id is not None and hasattr(Interaction, "workspace_id"):
+                inter_q = inter_q.filter(Interaction.workspace_id == workspace_id)
+            interactions = inter_q.order_by(desc(Interaction.occurred_at)).all()
             
             # Combine activities and emails
             timeline = []
@@ -125,26 +140,33 @@ class ActivityTimelineService:
     
     @staticmethod
     def get_user_activity_summary(db: Session, user_id: int, 
-                                days: int = 7) -> Dict:
+                                days: int = 7,
+                                workspace_id: Optional[int] = None) -> Dict:
         """
         Get activity summary for user over time period
         """
         try:
             cutoff_date = datetime.utcnow() - timedelta(days=days)
             
-            activities = db.query(Activity).filter(
+            act_q = db.query(Activity).filter(
                 and_(
                     Activity.user_id == user_id,
                     Activity.created_at >= cutoff_date
                 )
-            ).all()
+            )
+            if workspace_id is not None:
+                act_q = act_q.filter(Activity.workspace_id == workspace_id)
+            activities = act_q.all()
             
-            interactions = db.query(Interaction).filter(
+            inter_q = db.query(Interaction).filter(
                 and_(
                     Interaction.user_id == user_id,
                     Interaction.occurred_at >= cutoff_date
                 )
-            ).all()
+            )
+            if workspace_id is not None and hasattr(Interaction, "workspace_id"):
+                inter_q = inter_q.filter(Interaction.workspace_id == workspace_id)
+            interactions = inter_q.all()
             
             # Count by type
             activity_counts = {}
@@ -174,12 +196,15 @@ class ActivityTimelineService:
             return {}
     
     @staticmethod
-    def get_deal_activity_timeline(db: Session, deal_id: int) -> List[Dict]:
+    def get_deal_activity_timeline(db: Session, deal_id: int, workspace_id: Optional[int] = None) -> List[Dict]:
         """Get activity timeline for a specific deal"""
         try:
-            activities = db.query(DealActivity).filter(
+            query = db.query(DealActivity).filter(
                 DealActivity.deal_id == deal_id
-            ).order_by(desc(DealActivity.created_at)).all()
+            )
+            if workspace_id is not None and hasattr(DealActivity, "workspace_id"):
+                query = query.filter(DealActivity.workspace_id == workspace_id)
+            activities = query.order_by(desc(DealActivity.created_at)).all()
             
             timeline = []
             for activity in activities:

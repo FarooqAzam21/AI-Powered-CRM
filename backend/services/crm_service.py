@@ -17,13 +17,17 @@ def extract_company(email: str) -> str:
     return domain.split(".")[0].replace("-", " ").title()
 
 
-def upsert_contact_from_email(db, user_id: int, sender: str, sender_email: str, subject: str, snippet: str, gmail_message_id: str, occurred_at=None):
+def upsert_contact_from_email(db, user_id: int, sender: str, sender_email: str, subject: str, snippet: str, gmail_message_id: str, occurred_at=None, workspace_id=None):
     sender_email = (sender_email or "").lower()
     if not sender_email:
         return None
-    contact = db.query(Contact).filter(Contact.user_id == user_id, Contact.email == sender_email).first()
+    query = db.query(Contact).filter(Contact.user_id == user_id, Contact.email == sender_email)
+    if workspace_id is not None:
+        query = query.filter(Contact.workspace_id == workspace_id)
+    contact = query.first()
     if not contact:
         contact = Contact(
+            workspace_id=workspace_id,
             user_id=user_id,
             email=sender_email,
             name=sender or sender_email,
@@ -43,7 +47,8 @@ def upsert_contact_from_email(db, user_id: int, sender: str, sender_email: str, 
     )
     db.add(interaction)
     score = score_lead(subject=f"{subject} {snippet}", interaction_count=len(contact.interactions) + 1)
-    lead = contact.lead or Lead(user_id=user_id, contact_id=contact.id)
+    target_ws = workspace_id or getattr(contact, "workspace_id", None)
+    lead = contact.lead or Lead(user_id=user_id, contact_id=contact.id, workspace_id=target_ws)
     lead.score = score["score"]
     lead.label = score["label"]
     lead.confidence = score["confidence"]
@@ -52,17 +57,18 @@ def upsert_contact_from_email(db, user_id: int, sender: str, sender_email: str, 
     lead.urgency = score["urgency"]
     lead.hiring_intent = score["hiring_intent"]
     db.add(lead)
-    cache_json(f"lead_score:{user_id}:{sender_email}", score, ttl=3600)
+    cache_json(f"lead_score:{target_ws or 'global'}:{user_id}:{sender_email}", score, ttl=3600)
     if score["label"] == "hot":
-        db.add(
-            AIInsight(
-                user_id=user_id,
-                contact_id=contact.id,
-                insight_type="hot_lead",
-                payload=json.dumps(score),
-                confidence=score["confidence"],
-            )
+        insight = AIInsight(
+            user_id=user_id,
+            contact_id=contact.id,
+            insight_type="hot_lead",
+            payload=json.dumps(score),
+            confidence=score["confidence"],
         )
+        if hasattr(insight, "workspace_id"):
+            insight.workspace_id = target_ws
+        db.add(insight)
     return contact
 
 

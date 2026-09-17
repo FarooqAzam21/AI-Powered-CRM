@@ -10,7 +10,7 @@ from auth.dependencies import get_current_user_model
 from auth.models import User
 from database import SessionLocal
 from ws_manager.socket import manager
-from websocket.dashboard_models import (
+from ws_manager.dashboard_models import (
     SubscriptionMessage, ConnectionEstablishedEvent,
     SubscriptionConfirmedEvent, ErrorEvent
 )

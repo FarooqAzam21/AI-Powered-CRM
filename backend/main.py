@@ -13,7 +13,8 @@ from cache.redis_client import MemoryCache, get_cache
 from config.settings import get_settings
 from database import Base, SessionLocal, engine
 from db_indexes import ensure_performance_indexes
-from db_schema import ensure_auth_schema
+from db_schema import ensure_auth_schema, ensure_billing_schema
+import billing.models  # noqa: F401
 from google_auth import router as google_router
 from middleware.rate_limit import RateLimitMiddleware
 from middleware.security import SecurityHeadersMiddleware
@@ -36,6 +37,7 @@ from routers.knowledge_router import router as knowledge_router
 from routers.developer_router import router as developer_router
 from routers.workspace_router import router as workspace_router
 from routers.organization_router import router as organization_router
+from routers.billing_router import router as billing_router
 from ws_manager.socket import manager
 from middleware.api_audit_middleware import APIAuditMiddleware
 from middleware.tenant_context import TenantContextMiddleware
@@ -81,9 +83,11 @@ app.include_router(knowledge_router, dependencies=[Depends(require_workspace_mem
 app.include_router(developer_router, dependencies=[Depends(require_workspace_member)])
 app.include_router(workspace_router, dependencies=[Depends(require_workspace_member)])
 app.include_router(organization_router)
+app.include_router(billing_router)
 
 Base.metadata.create_all(bind=engine)
 ensure_auth_schema(engine)
+ensure_billing_schema(engine)
 ensure_performance_indexes(engine)
 
 try:

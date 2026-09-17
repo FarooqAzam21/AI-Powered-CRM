@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # =================== EMAIL TASKS ===================
 
 @celery_app.task(bind=True, name="tasks.email_tasks.sync_gmail_emails")
-def sync_gmail_emails(self, user_id: int = None):
+def sync_gmail_emails(self, user_id: int = None, workspace_id: int = None):
     """
     Sync Gmail emails for user(s)
     Can run for specific user or all users
@@ -26,9 +26,13 @@ def sync_gmail_emails(self, user_id: int = None):
         
         # Get users to sync
         if user_id:
-            users = db.query(User).filter(User.id == user_id).all()
+            query = db.query(User).filter(User.id == user_id)
         else:
-            users = db.query(User).filter(User.gmail_connected == True).all()
+            query = db.query(User).filter(User.gmail_connected == True)
+            
+        if workspace_id is not None:
+            query = query.filter(User.workspace_id == workspace_id)
+        users = query.all()
         
         total_synced = 0
         total_classified = 0
@@ -144,7 +148,7 @@ def generate_reply(self, email_id: int, tone: str = "professional"):
         db.close()
 
 @celery_app.task(bind=True, name="tasks.email_tasks.link_email_to_contact")
-def link_email_to_contact(self, email_id: int):
+def link_email_to_contact(self, email_id: int, workspace_id: int = None):
     """
     Link email to existing contact or create new contact
     """
@@ -155,21 +159,30 @@ def link_email_to_contact(self, email_id: int):
         if not email or email.contact_id:
             return {"already_linked": True}
         
-        logger.info(f"🔗 Linking email to contact: {email.sender}")
+        ws_id = workspace_id or getattr(email, "workspace_id", None)
+        if ws_id is None:
+            user = db.query(User).filter(User.id == email.user_id).first()
+            ws_id = getattr(user, "workspace_id", None) if user else None
+        
+        logger.info(f"🔗 Linking email to contact: {email.sender}, workspace_id={ws_id}")
         
         # Extract sender info
         sender_email = email.sender.split('<')[-1].rstrip('>')
         sender_name = email.sender.split('<')[0].strip() if '<' in email.sender else sender_email.split('@')[0]
         
         # Get or create contact
-        contact = db.query(Contact).filter(
+        query = db.query(Contact).filter(
             Contact.user_id == email.user_id,
             Contact.email == sender_email.lower()
-        ).first()
+        )
+        if ws_id is not None:
+            query = query.filter(Contact.workspace_id == ws_id)
+        contact = query.first()
         
         if not contact:
             contact = Contact(
                 user_id=email.user_id,
+                workspace_id=ws_id,
                 email=sender_email.lower(),
                 name=sender_name,
                 is_active=True
@@ -183,6 +196,7 @@ def link_email_to_contact(self, email_id: int):
         # Create activity record
         activity = Activity(
             user_id=email.user_id,
+            workspace_id=ws_id,
             contact_id=contact.id,
             type="email_received",
             subject=email.subject,

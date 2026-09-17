@@ -244,6 +244,10 @@ class User(Base):
     
     is_verified = Column(Boolean, default=False)
     verification_token = Column(String, nullable=True)
+    google_access_token = Column(String, nullable=True)
+    google_refresh_token = Column(String, nullable=True)
+    gmail_connected = Column(Boolean, default=False)
+
 
     workspace_members = relationship(
         "WorkspaceMember",
@@ -724,14 +728,33 @@ User.sales_cycle_metrics = relationship("SalesCycleMetrics", back_populates="use
 User.forecast_accuracies = relationship("ForecastAccuracy", back_populates="user", cascade="all, delete-orphan")
 User.territory_metrics = relationship("TerritoryMetrics", back_populates="user", cascade="all, delete-orphan")
 
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    token_hash = Column(String, unique=True, index=True, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+    replaced_by = Column(String, nullable=True)
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
+
+    user = relationship("User", back_populates="refresh_tokens")
+
+User.refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
+
 # Update Deal relationships to include Phase 7 models
 Deal.win_loss = relationship("WinLossAnalysis", back_populates="deal", uselist=False, cascade="all, delete-orphan")
 
 # Ensure other models in the codebase are imported and registered on the declarative base
 try:
     import models.crm
+    from models.crm import DealActivity, CustomerProfile
 except ImportError:
     pass
+
 
 try:
     import models.campaigns

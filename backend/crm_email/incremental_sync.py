@@ -42,8 +42,10 @@ def _process_message_detail(db, user, detail):
         existing.internal_date = internal_date or existing.internal_date
         return False
 
+    ws_id = getattr(user, "workspace_id", None)
     meta = EmailMetadata(
         user_id=user.id,
+        workspace_id=ws_id,
         gmail_message_id=gmail_id,
         thread_id=detail.get("threadId"),
         sender=sender_name or sender_email or "Unknown",
@@ -65,6 +67,7 @@ def _process_message_detail(db, user, detail):
         snippet=meta.snippet,
         gmail_message_id=gmail_id,
         occurred_at=meta.internal_date,
+        workspace_id=ws_id,
     )
     return True
 

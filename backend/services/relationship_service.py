@@ -6,7 +6,8 @@ import logging
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc
-from auth.models import ContactRelationship, Contact, Email, User
+from auth.models import ContactRelationship, Email, User
+from models.crm_unified import Contact
 from typing import List, Dict, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -18,17 +19,21 @@ class RelationshipService:
     
     @staticmethod
     def link_contacts(db: Session, user_id: int, from_contact_id: int, 
-                     to_contact_id: int, relationship_type: str = "mentions") -> ContactRelationship:
+                     to_contact_id: int, relationship_type: str = "mentions",
+                     workspace_id: Optional[int] = None) -> ContactRelationship:
         """Create or update relationship between contacts"""
         try:
             # Check if relationship exists
-            relationship = db.query(ContactRelationship).filter(
+            query = db.query(ContactRelationship).filter(
                 and_(
                     ContactRelationship.user_id == user_id,
                     ContactRelationship.from_contact_id == from_contact_id,
                     ContactRelationship.to_contact_id == to_contact_id
                 )
-            ).first()
+            )
+            if workspace_id is not None:
+                query = query.filter(ContactRelationship.workspace_id == workspace_id)
+            relationship = query.first()
             
             if relationship:
                 # Update existing relationship
@@ -38,6 +43,7 @@ class RelationshipService:
             else:
                 # Create new relationship
                 relationship = ContactRelationship(
+                    workspace_id=workspace_id,
                     user_id=user_id,
                     from_contact_id=from_contact_id,
                     to_contact_id=to_contact_id,
@@ -58,32 +64,36 @@ class RelationshipService:
             db.rollback()
             logger.error(f"❌ Link contacts failed: {e}")
             raise
-    
+
     @staticmethod
-    def extract_relationships_from_email(db: Session, user_id: int, email: Email) -> int:
+    def extract_relationships_from_email(db: Session, user_id: int, email: Email, workspace_id: Optional[int] = None) -> int:
         """
         Extract relationships from email recipients and CC'd contacts
         Returns count of relationships created
         """
         try:
             count = 0
+            target_ws = workspace_id or getattr(email, "workspace_id", None)
             
             # Get or create sender contact
             sender_contact = None
             if email.sender:
-                sender_contact = db.query(Contact).filter(
+                query = db.query(Contact).filter(
                     and_(
                         Contact.user_id == user_id,
                         Contact.email == email.sender
                     )
-                ).first()
+                )
+                if target_ws is not None:
+                    query = query.filter(Contact.workspace_id == target_ws)
+                sender_contact = query.first()
             
             if not sender_contact or not email.contact_id:
                 return count
             
             # Link sender to main contact
             RelationshipService.link_contacts(
-                db, user_id, sender_contact.id, email.contact_id, "email_sent"
+                db, user_id, sender_contact.id, email.contact_id, "email_sent", workspace_id=target_ws
             )
             count += 1
             
@@ -98,18 +108,21 @@ class RelationshipService:
     
     @staticmethod
     def get_contact_relationships(db: Session, contact_id: int, 
-                                 limit: int = 20) -> List[Dict]:
+                                 limit: int = 20, workspace_id: Optional[int] = None) -> List[Dict]:
         """
         Get all relationships for a contact
         Returns list of connected contacts with relationship details
         """
         try:
-            relationships = db.query(ContactRelationship).filter(
+            query = db.query(ContactRelationship).filter(
                 or_(
                     ContactRelationship.from_contact_id == contact_id,
                     ContactRelationship.to_contact_id == contact_id
                 )
-            ).order_by(desc(ContactRelationship.strength)).limit(limit).all()
+            )
+            if workspace_id is not None:
+                query = query.filter(ContactRelationship.workspace_id == workspace_id)
+            relationships = query.order_by(desc(ContactRelationship.strength)).limit(limit).all()
             
             result = []
             for rel in relationships:
@@ -145,16 +158,23 @@ class RelationshipService:
             return []
     
     @staticmethod
-    def build_relationship_graph(db: Session, user_id: int) -> Dict:
+    def build_relationship_graph(db: Session, user_id: int, workspace_id: Optional[int] = None) -> Dict:
         """
         Build relationship graph for all user contacts
         Returns nodes and edges for visualization
         """
         try:
-            contacts = db.query(Contact).filter(Contact.user_id == user_id).all()
-            relationships = db.query(ContactRelationship).filter(
+            cont_q = db.query(Contact).filter(Contact.user_id == user_id)
+            if workspace_id is not None:
+                cont_q = cont_q.filter(Contact.workspace_id == workspace_id)
+            contacts = cont_q.all()
+            
+            rel_q = db.query(ContactRelationship).filter(
                 ContactRelationship.user_id == user_id
-            ).all()
+            )
+            if workspace_id is not None:
+                rel_q = rel_q.filter(ContactRelationship.workspace_id == workspace_id)
+            relationships = rel_q.all()
             
             # Build nodes
             nodes = []
@@ -164,8 +184,8 @@ class RelationshipService:
                     "label": contact.name or contact.email,
                     "email": contact.email,
                     "company": contact.company,
-                    "size": min(30, 10 + contact.interaction_count),  # Size by interactions
-                    "color": "green" if contact.score > 50 else "orange" if contact.score > 20 else "gray"
+                    "size": min(30, 10 + getattr(contact, "interaction_count", len(contact.interactions) if hasattr(contact, "interactions") else 0)),  # Size by interactions
+                    "color": "green" if getattr(contact, "relationship_score", getattr(contact, "score", 0.0)) > 50 else "orange" if getattr(contact, "relationship_score", getattr(contact, "score", 0.0)) > 20 else "gray"
                 })
             
             # Build edges
@@ -197,23 +217,29 @@ class RelationshipService:
             return {"nodes": [], "edges": [], "stats": {}}
     
     @staticmethod
-    def identify_key_influencers(db: Session, user_id: int, limit: int = 10) -> List[Dict]:
+    def identify_key_influencers(db: Session, user_id: int, limit: int = 10, workspace_id: Optional[int] = None) -> List[Dict]:
         """
         Identify key influencers (most connected contacts)
         """
         try:
             # Get contacts with their relationship counts
-            contacts = db.query(Contact).filter(Contact.user_id == user_id).all()
+            cont_q = db.query(Contact).filter(Contact.user_id == user_id)
+            if workspace_id is not None:
+                cont_q = cont_q.filter(Contact.workspace_id == workspace_id)
+            contacts = cont_q.all()
             
             influencer_scores = []
             for contact in contacts:
                 # Count relationships
-                relationship_count = db.query(ContactRelationship).filter(
+                rel_q = db.query(ContactRelationship).filter(
                     or_(
                         ContactRelationship.from_contact_id == contact.id,
                         ContactRelationship.to_contact_id == contact.id
                     )
-                ).count()
+                )
+                if workspace_id is not None:
+                    rel_q = rel_q.filter(ContactRelationship.workspace_id == workspace_id)
+                relationship_count = rel_q.count()
                 
                 # Calculate influence score
                 score = (relationship_count * 30) + (contact.interaction_count * 10) + contact.score

@@ -19,7 +19,7 @@ class OllamaProvider(BaseProvider):
         settings = get_settings()
         self.base_url = settings.ollama_base_url.rstrip("/")
         self.model = settings.ollama_model
-        self.timeout = httpx.Timeout(60.0)
+        self.timeout = httpx.Timeout(timeout=15.0, connect=3.0)
     
     async def generate(self, prompt: str, system_prompt: Optional[str] = None, **kwargs) -> str:
         """Generate full response synchronously from Ollama, with caching."""
@@ -43,7 +43,9 @@ class OllamaProvider(BaseProvider):
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(url, json=payload)
-                response.raise_for_status()
+                if response.status_code != 200:
+                    logger.error(f"Ollama returned {response.status_code}: {response.text}")
+                    response.raise_for_status()
                 data = response.json()
                 result = data.get("response", "")
                 

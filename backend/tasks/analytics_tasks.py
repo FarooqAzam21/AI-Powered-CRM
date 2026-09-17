@@ -16,6 +16,8 @@ from services.sales_cycle_service import SalesCycleService
 from services.forecast_service import ForecastService
 from services.territory_service import TerritoryService
 
+from typing import Optional
+
 logger = logging.getLogger(__name__)
 
 # Database session
@@ -25,14 +27,14 @@ SessionLocal = sessionmaker(bind=engine)
 # =================== WIN/LOSS TASKS ===================
 
 @celery_app.task(bind=True, name="tasks.analytics.analyze_deal_outcome")
-def analyze_deal_outcome(self, deal_id: int, user_id: int, outcome: str, competitor: str = None):
+def analyze_deal_outcome(self, deal_id: int, user_id: int, outcome: str, competitor: str = None, workspace_id: Optional[int] = None):
     """Analyze a closed deal and extract patterns"""
     db = SessionLocal()
     try:
-        logger.info(f"📊 [Task] Analyzing deal outcome: deal_id={deal_id}, outcome={outcome}")
+        logger.info(f"📊 [Task] Analyzing deal outcome: deal_id={deal_id}, outcome={outcome}, workspace_id={workspace_id}")
         
         analysis = WinLossService.analyze_closed_deal(
-            db, user_id, deal_id, outcome, competitor
+            db, user_id, deal_id, outcome, competitor, workspace_id=workspace_id
         )
         
         if analysis:
@@ -57,13 +59,13 @@ def analyze_deal_outcome(self, deal_id: int, user_id: int, outcome: str, competi
 # =================== SALES CYCLE TASKS ===================
 
 @celery_app.task(bind=True, name="tasks.analytics.calculate_cycle_metrics")
-def calculate_cycle_metrics(self, user_id: int, period_type: str = "monthly"):
+def calculate_cycle_metrics(self, user_id: int, period_type: str = "monthly", workspace_id: Optional[int] = None):
     """Calculate sales cycle metrics"""
     db = SessionLocal()
     try:
-        logger.info(f"📊 [Task] Calculating cycle metrics: user_id={user_id}, period={period_type}")
+        logger.info(f"📊 [Task] Calculating cycle metrics: user_id={user_id}, period={period_type}, workspace_id={workspace_id}")
         
-        metrics = SalesCycleService.calculate_cycle_metrics(db, user_id, period_type)
+        metrics = SalesCycleService.calculate_cycle_metrics(db, user_id, period_type, workspace_id=workspace_id)
         
         if metrics:
             logger.info(f"✅ [Task] Cycle metrics: {metrics.avg_sales_cycle_days:.1f} days avg")
@@ -86,13 +88,13 @@ def calculate_cycle_metrics(self, user_id: int, period_type: str = "monthly"):
 # =================== FORECAST TASKS ===================
 
 @celery_app.task(bind=True, name="tasks.analytics.calculate_forecast_accuracy")
-def calculate_forecast_accuracy(self, user_id: int, month: str):
+def calculate_forecast_accuracy(self, user_id: int, month: str, workspace_id: Optional[int] = None):
     """Calculate forecast accuracy for a month"""
     db = SessionLocal()
     try:
-        logger.info(f"📊 [Task] Calculating forecast accuracy: month={month}")
+        logger.info(f"📊 [Task] Calculating forecast accuracy: month={month}, workspace_id={workspace_id}")
         
-        forecast = ForecastService.calculate_month_accuracy(db, user_id, month)
+        forecast = ForecastService.calculate_month_accuracy(db, user_id, month, workspace_id=workspace_id)
         
         if forecast:
             logger.info(f"✅ [Task] Forecast accuracy: {forecast.forecast_accuracy_pct:.1f}%")
@@ -115,13 +117,13 @@ def calculate_forecast_accuracy(self, user_id: int, month: str):
 # =================== TERRITORY TASKS ===================
 
 @celery_app.task(bind=True, name="tasks.analytics.calculate_territory_metrics")
-def calculate_territory_metrics(self, user_id: int, territory_name: str):
+def calculate_territory_metrics(self, user_id: int, territory_name: str, workspace_id: Optional[int] = None):
     """Calculate territory metrics"""
     db = SessionLocal()
     try:
-        logger.info(f"📊 [Task] Calculating territory metrics: territory={territory_name}")
+        logger.info(f"📊 [Task] Calculating territory metrics: territory={territory_name}, workspace_id={workspace_id}")
         
-        metrics = TerritoryService.create_territory_metrics(db, user_id, territory_name)
+        metrics = TerritoryService.create_territory_metrics(db, user_id, territory_name, workspace_id=workspace_id)
         
         if metrics:
             logger.info(f"✅ [Task] Territory metrics: {metrics.win_rate_pct:.1f}% win rate")
@@ -156,24 +158,27 @@ def periodic_analytics_refresh(self):
         
         for user in users:
             try:
+                ws_id = getattr(user, "workspace_id", None)
                 # Calculate cycle metrics
-                SalesCycleService.calculate_cycle_metrics(db, user.id, "monthly")
+                SalesCycleService.calculate_cycle_metrics(db, user.id, "monthly", workspace_id=ws_id)
                 
                 # Calculate forecast if it's month-end
                 today = datetime.utcnow()
                 if today.day >= 28:  # Near month end
                     month = today.strftime("%Y-%m")
-                    ForecastService.calculate_month_accuracy(db, user.id, month)
+                    ForecastService.calculate_month_accuracy(db, user.id, month, workspace_id=ws_id)
                 
                 # Update territories
-                # (assuming user has territories)
                 territories = set()
-                for deal in db.query(Deal).filter(Deal.user_id == user.id).all():
+                deal_q = db.query(Deal).filter(Deal.user_id == user.id)
+                if ws_id is not None:
+                    deal_q = deal_q.filter(Deal.workspace_id == ws_id)
+                for deal in deal_q.all():
                     if hasattr(deal, 'territory') and deal.territory:
                         territories.add(deal.territory)
                 
                 for territory in territories:
-                    TerritoryService.create_territory_metrics(db, user.id, territory)
+                    TerritoryService.create_territory_metrics(db, user.id, territory, workspace_id=ws_id)
                 
                 success_count += 1
                 logger.info(f"✅ [Periodic] Analytics updated for user {user.id}")
@@ -191,24 +196,25 @@ def periodic_analytics_refresh(self):
         db.close()
 
 @celery_app.task(bind=True, name="tasks.analytics.generate_analytics_report")
-def generate_analytics_report(self, user_id: int):
+def generate_analytics_report(self, user_id: int, workspace_id: Optional[int] = None):
     """Generate comprehensive monthly analytics report"""
     db = SessionLocal()
     try:
-        logger.info(f"📊 [Task] Generating analytics report for user {user_id}")
+        logger.info(f"📊 [Task] Generating analytics report for user {user_id}, workspace_id={workspace_id}")
         
         report = {
             "user_id": user_id,
+            "workspace_id": workspace_id,
             "generated_at": datetime.utcnow().isoformat(),
             "sections": {}
         }
         
         # Win/Loss summary
-        win_loss = WinLossService.get_win_loss_summary(db, user_id)
+        win_loss = WinLossService.get_win_loss_summary(db, user_id, workspace_id=workspace_id)
         report["sections"]["win_loss_summary"] = win_loss
         
         # Sales cycle metrics
-        cycle_metrics = SalesCycleService.calculate_cycle_metrics(db, user_id, "monthly")
+        cycle_metrics = SalesCycleService.calculate_cycle_metrics(db, user_id, "monthly", workspace_id=workspace_id)
         if cycle_metrics:
             report["sections"]["sales_cycle"] = {
                 "avg_cycle_days": cycle_metrics.avg_sales_cycle_days,
@@ -216,11 +222,11 @@ def generate_analytics_report(self, user_id: int):
             }
         
         # Forecast accuracy
-        forecast_trends = ForecastService.get_accuracy_trends(db, user_id)
+        forecast_trends = ForecastService.get_accuracy_trends(db, user_id, workspace_id=workspace_id)
         report["sections"]["forecast_trends"] = forecast_trends
         
         # Territory analysis
-        territory_comparison = TerritoryService.get_territory_comparison(db, user_id)
+        territory_comparison = TerritoryService.get_territory_comparison(db, user_id, workspace_id=workspace_id)
         report["sections"]["territories"] = territory_comparison
         
         logger.info(f"✅ [Task] Report generated: {len(report['sections'])} sections")

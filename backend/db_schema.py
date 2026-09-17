@@ -33,6 +33,8 @@ def ensure_auth_schema(engine):
         "manager_id": "ALTER TABLE users ADD COLUMN manager_id INTEGER",
         "job_title": "ALTER TABLE users ADD COLUMN job_title VARCHAR",
         "status": "ALTER TABLE users ADD COLUMN status VARCHAR DEFAULT 'active'",
+        "organization_id": "ALTER TABLE users ADD COLUMN organization_id INTEGER",
+        "workspace_id": "ALTER TABLE users ADD COLUMN workspace_id INTEGER",
     }
 
     with engine.begin() as conn:
@@ -95,3 +97,43 @@ def ensure_auth_schema(engine):
                     logger.info("Added missing workspaces.%s column", column)
                 except Exception as exc:
                     logger.warning("Could not add workspaces.%s column: %s", column, exc)
+
+    # 4. Ensure workspace_id exists across all CRM and campaign tables
+    crm_tables = [
+        "crm_contacts", "crm_leads", "crm_interactions", "crm_activities",
+        "crm_notes", "crm_deals", "crm_customer_profiles", "campaigns",
+        "campaign_recipients", "ai_insights", "email_metadata", "email_classification_rules"
+    ]
+    with engine.begin() as conn:
+        for tname in crm_tables:
+            if _has_table(engine, tname):
+                cols = _columns(engine, tname)
+                if "workspace_id" not in cols:
+                    try:
+                        conn.execute(text(f"ALTER TABLE {tname} ADD COLUMN workspace_id INTEGER"))
+                        logger.info("Added missing %s.workspace_id column", tname)
+                    except Exception as exc:
+                        logger.warning("Could not add %s.workspace_id column: %s", tname, exc)
+
+
+def ensure_billing_schema(engine):
+    """Ensure billing tables exist and default plans are seeded."""
+    try:
+        from database import Base
+        from billing.models import Plan, Subscription, SubscriptionHistory, UsageCounter, BillingWebhookEvent  # noqa: F401
+        from billing.plans import seed_default_plans
+        from database import SessionLocal
+
+        # Create any missing billing tables
+        Base.metadata.create_all(bind=engine)
+
+        # Seed default plans
+        db = SessionLocal()
+        try:
+            seed_default_plans(db)
+        finally:
+            db.close()
+        logger.info("Billing schema verified and default plans seeded.")
+    except Exception as exc:
+        logger.warning("Could not ensure billing schema: %s", exc)
+

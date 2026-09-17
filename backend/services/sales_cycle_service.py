@@ -17,7 +17,8 @@ class SalesCycleService:
     
     @staticmethod
     def calculate_cycle_metrics(db: Session, user_id: int, 
-                               period_type: str = "monthly") -> Optional[SalesCycleMetrics]:
+                               period_type: str = "monthly",
+                               workspace_id: Optional[int] = None) -> Optional[SalesCycleMetrics]:
         """
         Calculate sales cycle metrics for a period
         period_type: 'monthly', 'quarterly', 'yearly'
@@ -39,23 +40,29 @@ class SalesCycleService:
             logger.info(f"📊 Calculating {period_type} cycle metrics...")
             
             # Get deals closed in period
-            closed_deals = db.query(Deal).filter(
+            closed_q = db.query(Deal).filter(
                 and_(
                     Deal.user_id == user_id,
                     Deal.actual_close_date >= period_start,
                     Deal.actual_close_date <= period_end,
                     Deal.status.in_(["won", "lost"])
                 )
-            ).all()
+            )
+            if workspace_id is not None:
+                closed_q = closed_q.filter(Deal.workspace_id == workspace_id)
+            closed_deals = closed_q.all()
             
             # Get deals started in period
-            started_deals = db.query(Deal).filter(
+            started_q = db.query(Deal).filter(
                 and_(
                     Deal.user_id == user_id,
                     Deal.created_at >= period_start,
                     Deal.created_at <= period_end
                 )
-            ).all()
+            )
+            if workspace_id is not None:
+                started_q = started_q.filter(Deal.workspace_id == workspace_id)
+            started_deals = started_q.all()
             
             # Calculate cycle durations
             cycle_durations = []
@@ -74,6 +81,7 @@ class SalesCycleService:
             
             # Compile metrics
             metrics = SalesCycleMetrics(
+                workspace_id=workspace_id,
                 user_id=user_id,
                 period_start=period_start,
                 period_end=period_end,
@@ -88,7 +96,7 @@ class SalesCycleService:
                 deals_started=len(started_deals),
                 deals_closed=len([d for d in closed_deals if d.status == "won"]),
                 deals_lost=len([d for d in closed_deals if d.status == "lost"]),
-                avg_deals_in_pipeline=SalesCycleService._get_avg_pipeline_size(db, user_id, period_start, period_end)
+                avg_deals_in_pipeline=SalesCycleService._get_avg_pipeline_size(db, user_id, period_start, period_end, workspace_id=workspace_id)
             )
             
             db.add(metrics)
@@ -141,29 +149,36 @@ class SalesCycleService:
     
     @staticmethod
     def _get_avg_pipeline_size(db: Session, user_id: int, 
-                              period_start: datetime, period_end: datetime) -> float:
+                              period_start: datetime, period_end: datetime,
+                              workspace_id: Optional[int] = None) -> float:
         """Calculate average deals in pipeline during period"""
         # Simplified: count open deals at period end
-        open_deals = db.query(func.count(Deal.id)).filter(
+        query = db.query(func.count(Deal.id)).filter(
             and_(
                 Deal.user_id == user_id,
                 Deal.status == "open",
                 Deal.created_at <= period_end
             )
-        ).scalar()
+        )
+        if workspace_id is not None:
+            query = query.filter(Deal.workspace_id == workspace_id)
+        open_deals = query.scalar()
         
         return open_deals or 0
     
     @staticmethod
-    def get_bottleneck_analysis(db: Session, user_id: int) -> Dict:
+    def get_bottleneck_analysis(db: Session, user_id: int, workspace_id: Optional[int] = None) -> Dict:
         """Identify pipeline bottlenecks"""
         try:
-            deals = db.query(Deal).filter(
+            query = db.query(Deal).filter(
                 and_(
                     Deal.user_id == user_id,
                     Deal.status == "open"
                 )
-            ).all()
+            )
+            if workspace_id is not None:
+                query = query.filter(Deal.workspace_id == workspace_id)
+            deals = query.all()
             
             bottlenecks = {}
             
@@ -172,19 +187,17 @@ class SalesCycleService:
                 
                 if stage_deals:
                     # Find deals stuck longest in stage
-                    max_age = max(
+                    valid_ages = [
                         (datetime.utcnow() - d.stage_moved_at).days 
                         for d in stage_deals if d.stage_moved_at
-                    )
+                    ]
+                    max_age = max(valid_ages) if valid_ages else 0
                     
                     if max_age > 14:  # > 2 weeks
                         bottlenecks[stage] = {
                             "deal_count": len(stage_deals),
                             "oldest_days": max_age,
-                            "avg_days": sum(
-                                (datetime.utcnow() - d.stage_moved_at).days 
-                                for d in stage_deals if d.stage_moved_at
-                            ) / len(stage_deals),
+                            "avg_days": sum(valid_ages) / len(valid_ages) if valid_ages else 0,
                             "stalled_deals": len([d for d in stage_deals if max_age > 21])
                         }
             
@@ -196,18 +209,21 @@ class SalesCycleService:
             return {}
     
     @staticmethod
-    def get_sales_velocity(db: Session, user_id: int, days: int = 30) -> Dict:
+    def get_sales_velocity(db: Session, user_id: int, days: int = 30, workspace_id: Optional[int] = None) -> Dict:
         """Calculate sales velocity (deals per day, revenue per day)"""
         try:
             cutoff_date = datetime.utcnow() - timedelta(days=days)
             
-            closed_deals = db.query(Deal).filter(
+            query = db.query(Deal).filter(
                 and_(
                     Deal.user_id == user_id,
                     Deal.actual_close_date >= cutoff_date,
                     Deal.status == "won"
                 )
-            ).all()
+            )
+            if workspace_id is not None:
+                query = query.filter(Deal.workspace_id == workspace_id)
+            closed_deals = query.all()
             
             won_count = len(closed_deals)
             won_revenue = sum(d.value for d in closed_deals)

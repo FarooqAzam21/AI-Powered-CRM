@@ -11,19 +11,27 @@ def get_db():
     finally:
         db.close()
 
-def find_user_by_email(email: str):
-    db: Session = SessionLocal()
+def find_user_by_email(email: str, db: Session = None):
+    close_db = False
+    if db is None:
+        db = SessionLocal()
+        close_db = True
     user = db.query(User).filter(User.email == email).first()
-    db.close()
+    if close_db:
+        db.close()
     return user
 
-def create_user(user_data: dict):
-    db: Session = SessionLocal()
+def create_user(user_data: dict, db: Session = None):
+    close_db = False
+    if db is None:
+        db = SessionLocal()
+        close_db = True
     user = User(**user_data)
     db.add(user)
     db.commit()
     db.refresh(user)
-    db.close()
+    if close_db:
+        db.close()
     return user
 
 def authenticate(email, password):

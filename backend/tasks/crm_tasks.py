@@ -7,6 +7,7 @@ from datetime import datetime
 from celery import shared_task
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
+from typing import Optional
 from database import SessionLocal
 from auth.models import AIRecommendation
 from models.crm import Contact, CustomerProfile, Deal
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 # =================== PROFILE GENERATION ===================
 
 @shared_task(bind=True, name="tasks.crm.generate_customer_profile")
-def generate_customer_profile(self, contact_id: int):
+def generate_customer_profile(self, contact_id: int, workspace_id: Optional[int] = None):
     """
     Generate AI customer profile from email history
     Async task: Updates profile with AI insights
@@ -31,9 +32,9 @@ def generate_customer_profile(self, contact_id: int):
     try:
         db = SessionLocal()
         
-        logger.info(f"📊 [Profile] Generating profile for contact {contact_id}...")
+        logger.info(f"📊 [Profile] Generating profile for contact {contact_id}, workspace_id={workspace_id}...")
         
-        profile = CustomerProfileService.generate_profile(db=db, contact_id=contact_id)
+        profile = CustomerProfileService.generate_profile(db=db, contact_id=contact_id, workspace_id=workspace_id)
         
         if profile:
             return {
@@ -53,7 +54,7 @@ def generate_customer_profile(self, contact_id: int):
             db.close()
 
 @shared_task(bind=True, name="tasks.crm.batch_generate_profiles")
-def batch_generate_profiles(self, user_id: int, contact_ids: list):
+def batch_generate_profiles(self, user_id: int, contact_ids: list, workspace_id: Optional[int] = None):
     """
     Batch generate profiles for multiple contacts
     """
@@ -61,12 +62,12 @@ def batch_generate_profiles(self, user_id: int, contact_ids: list):
     try:
         db = SessionLocal()
         
-        logger.info(f"📊 [Batch] Generating profiles for {len(contact_ids)} contacts...")
+        logger.info(f"📊 [Batch] Generating profiles for {len(contact_ids)} contacts, workspace_id={workspace_id}...")
         
         results = []
         for contact_id in contact_ids:
             try:
-                profile = CustomerProfileService.generate_profile(db=db, contact_id=contact_id)
+                profile = CustomerProfileService.generate_profile(db=db, contact_id=contact_id, workspace_id=workspace_id)
                 results.append({
                     "contact_id": contact_id,
                     "status": "success" if profile else "failed"
@@ -96,7 +97,7 @@ def batch_generate_profiles(self, user_id: int, contact_ids: list):
 # =================== DEAL MANAGEMENT ===================
 
 @shared_task(bind=True, name="tasks.crm.score_deal")
-def score_deal(self, deal_id: int):
+def score_deal(self, deal_id: int, workspace_id: Optional[int] = None):
     """
     Update deal scoring based on activities and stage
     """
@@ -104,7 +105,10 @@ def score_deal(self, deal_id: int):
     try:
         db = SessionLocal()
         
-        deal = db.query(Deal).filter(Deal.id == deal_id).first()
+        deal_q = db.query(Deal).filter(Deal.id == deal_id)
+        if workspace_id is not None:
+            deal_q = deal_q.filter(Deal.workspace_id == workspace_id)
+        deal = deal_q.first()
         if not deal:
             return {"status": "failed", "deal_id": deal_id, "reason": "Deal not found"}
         
@@ -144,7 +148,7 @@ def score_deal(self, deal_id: int):
             db.close()
 
 @shared_task(bind=True, name="tasks.crm.check_deal_health")
-def check_deal_health(self, user_id: int):
+def check_deal_health(self, user_id: int, workspace_id: Optional[int] = None):
     """
     Check health of all deals (overdue, stalled, etc.)
     """
@@ -152,12 +156,12 @@ def check_deal_health(self, user_id: int):
     try:
         db = SessionLocal()
         
-        logger.info(f"🏥 [Health] Checking deal health for user {user_id}...")
+        logger.info(f"🏥 [Health] Checking deal health for user {user_id}, workspace_id={workspace_id}...")
         
         alerts = []
         
         # Get overdue deals
-        overdue_deals = DealService.get_overdue_deals(db=db, user_id=user_id)
+        overdue_deals = DealService.get_overdue_deals(db=db, user_id=user_id, workspace_id=workspace_id)
         alerts.extend([
             {"type": "overdue", "deal_id": d.id, "name": d.name, "days_overdue": (
                 datetime.utcnow() - d.expected_close_date
@@ -166,12 +170,15 @@ def check_deal_health(self, user_id: int):
         ])
         
         # Get stalled deals (low probability, no activity)
-        stalled_deals = db.query(Deal).filter(
+        stalled_q = db.query(Deal).filter(
             Deal.user_id == user_id,
             Deal.status == "open",
             Deal.probability < 20,
             Deal.stage == "prospecting"
-        ).all()
+        )
+        if workspace_id is not None:
+            stalled_q = stalled_q.filter(Deal.workspace_id == workspace_id)
+        stalled_deals = stalled_q.all()
         
         alerts.extend([
             {"type": "stalled", "deal_id": d.id, "name": d.name}
@@ -197,7 +204,7 @@ def check_deal_health(self, user_id: int):
 # =================== ACTIVITY TIMELINE ===================
 
 @shared_task(bind=True, name="tasks.crm.generate_activity_timeline")
-def generate_activity_timeline(self, contact_id: int):
+def generate_activity_timeline(self, contact_id: int, workspace_id: Optional[int] = None):
     """
     Generate complete activity timeline for contact
     """
@@ -205,9 +212,9 @@ def generate_activity_timeline(self, contact_id: int):
     try:
         db = SessionLocal()
         
-        logger.info(f"📋 [Timeline] Generating timeline for contact {contact_id}...")
+        logger.info(f"📋 [Timeline] Generating timeline for contact {contact_id}, workspace_id={workspace_id}...")
         
-        timeline = ActivityTimelineService.get_contact_timeline(db=db, contact_id=contact_id)
+        timeline = ActivityTimelineService.get_contact_timeline(db=db, contact_id=contact_id, workspace_id=workspace_id)
         
         logger.info(f"✅ Timeline generated: {len(timeline)} events")
         
@@ -228,7 +235,7 @@ def generate_activity_timeline(self, contact_id: int):
 # =================== RELATIONSHIP TRACKING ===================
 
 @shared_task(bind=True, name="tasks.crm.build_relationship_graph")
-def build_relationship_graph(self, user_id: int):
+def build_relationship_graph(self, user_id: int, workspace_id: Optional[int] = None):
     """
     Build relationship graph for all user contacts
     """
@@ -236,9 +243,9 @@ def build_relationship_graph(self, user_id: int):
     try:
         db = SessionLocal()
         
-        logger.info(f"🔗 [Relationships] Building graph for user {user_id}...")
+        logger.info(f"🔗 [Relationships] Building graph for user {user_id}, workspace_id={workspace_id}...")
         
-        graph = RelationshipService.build_relationship_graph(db=db, user_id=user_id)
+        graph = RelationshipService.build_relationship_graph(db=db, user_id=user_id, workspace_id=workspace_id)
         
         logger.info(f"✅ Graph built: {graph['stats']['total_contacts']} contacts, {graph['stats']['total_connections']} connections")
         
@@ -256,7 +263,7 @@ def build_relationship_graph(self, user_id: int):
             db.close()
 
 @shared_task(bind=True, name="tasks.crm.identify_influencers")
-def identify_influencers(self, user_id: int):
+def identify_influencers(self, user_id: int, workspace_id: Optional[int] = None):
     """
     Identify key influencers in contact network
     """
@@ -264,9 +271,9 @@ def identify_influencers(self, user_id: int):
     try:
         db = SessionLocal()
         
-        logger.info(f"⭐ [Influencers] Identifying influencers for user {user_id}...")
+        logger.info(f"⭐ [Influencers] Identifying influencers for user {user_id}, workspace_id={workspace_id}...")
         
-        influencers = RelationshipService.identify_key_influencers(db=db, user_id=user_id)
+        influencers = RelationshipService.identify_key_influencers(db=db, user_id=user_id, workspace_id=workspace_id)
         
         logger.info(f"✅ Identified {len(influencers)} key influencers")
         
@@ -287,7 +294,7 @@ def identify_influencers(self, user_id: int):
 # =================== RECOMMENDATIONS ===================
 
 @shared_task(bind=True, name="tasks.crm.generate_recommendations")
-def generate_recommendations(self, user_id: int, contact_id: int):
+def generate_recommendations(self, user_id: int, contact_id: int, workspace_id: Optional[int] = None):
     """
     Generate AI recommendations for contact
     """
@@ -295,12 +302,13 @@ def generate_recommendations(self, user_id: int, contact_id: int):
     try:
         db = SessionLocal()
         
-        logger.info(f"🧠 [Recommendations] Generating for contact {contact_id}...")
+        logger.info(f"🧠 [Recommendations] Generating for contact {contact_id}, workspace_id={workspace_id}...")
         
         recommendations = RecommendationEngine.generate_contact_recommendations(
             db=db,
             user_id=user_id,
-            contact_id=contact_id
+            contact_id=contact_id,
+            workspace_id=workspace_id
         )
         
         logger.info(f"✅ Generated {len(recommendations)} recommendations")
@@ -329,7 +337,7 @@ def generate_recommendations(self, user_id: int, contact_id: int):
             db.close()
 
 @shared_task(bind=True, name="tasks.crm.generate_user_recommendations")
-def generate_user_recommendations(self, user_id: int, limit: int = 20):
+def generate_user_recommendations(self, user_id: int, limit: int = 20, workspace_id: Optional[int] = None):
     """
     Generate recommendations for all active contacts
     """
@@ -337,11 +345,11 @@ def generate_user_recommendations(self, user_id: int, limit: int = 20):
     try:
         db = SessionLocal()
         
-        logger.info(f"🧠 [Batch Recommendations] Generating for user {user_id}...")
+        logger.info(f"🧠 [Batch Recommendations] Generating for user {user_id}, workspace_id={workspace_id}...")
         
         # Get active contacts (with recent activity)
         active_contacts = ActivityTimelineService.get_active_contacts(
-            db=db, user_id=user_id, days=7
+            db=db, user_id=user_id, days=7, workspace_id=workspace_id
         )
         
         total_generated = 0
@@ -350,7 +358,8 @@ def generate_user_recommendations(self, user_id: int, limit: int = 20):
                 RecommendationEngine.generate_contact_recommendations(
                     db=db,
                     user_id=user_id,
-                    contact_id=contact_data["id"]
+                    contact_id=contact_data["id"],
+                    workspace_id=workspace_id
                 )
                 total_generated += 1
             except Exception as e:
@@ -393,7 +402,7 @@ def periodic_profile_refresh():
         
         for contact in contacts_needing_profile:
             try:
-                CustomerProfileService.generate_profile(db=db, contact_id=contact.id)
+                CustomerProfileService.generate_profile(db=db, contact_id=contact.id, workspace_id=getattr(contact, "workspace_id", None))
             except Exception as e:
                 logger.warning(f"Could not generate profile for {contact.email}: {e}")
         
@@ -421,7 +430,7 @@ def periodic_deal_scoring():
         
         for deal in open_deals:
             try:
-                score_deal.apply_async(args=[deal.id])
+                score_deal.apply_async(args=[deal.id], kwargs={"workspace_id": getattr(deal, "workspace_id", None)})
             except Exception as e:
                 logger.warning(f"Could not score deal {deal.id}: {e}")
         
