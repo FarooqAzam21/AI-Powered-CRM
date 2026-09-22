@@ -1,11 +1,13 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { startGoogleAuth } from "../hooks/useGoogleAuth";
 import { useCan, useRole } from "../security/permissionHooks";
 import { PERMISSIONS } from "../security/permissions";
-import { Shield, Key, CreditCard, Users, History, Mail, Settings as GearIcon, Check } from "lucide-react";
+import { Shield, Key, CreditCard, Users, History, Mail, Settings as GearIcon, Check, ArrowRight, Sparkles } from "lucide-react";
 
 export default function Settings() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const rawRole = useRole();
   const [activeTab, setActiveTab] = useState("general");
@@ -176,19 +178,25 @@ export default function Settings() {
             <div className="space-y-6">
               <div>
                 <h3 className="text-lg font-semibold text-white">Billing & Subscription</h3>
-                <p className="text-sm text-slate-400">Monitor usage metrics and plan tier upgrades.</p>
+                <p className="text-sm text-slate-400">Manage plan tier, view quota consumption, and handle invoices.</p>
               </div>
-              <div className="rounded-lg border border-cyan-400/20 bg-cyan-400/5 p-5">
-                <div className="flex justify-between items-start gap-4">
-                  <div>
-                    <h4 className="font-semibold text-white">Enterprise Plan</h4>
-                    <p className="text-xs text-cyan-300 font-medium">Auto-renewing on August 1, 2026</p>
+              <div className="rounded-2xl border border-cyan-400/20 bg-gradient-to-r from-cyan-950/40 via-slate-900 to-[#0c111d] p-6 shadow-xl space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-400">Enterprise Billing Portal</span>
+                    <h4 className="text-xl font-bold text-white">Dedicated Subscription Management</h4>
+                    <p className="text-xs text-slate-300 max-w-lg">
+                      Access your organization's real-time usage meters, trial controls, plan comparisons, and feature entitlements.
+                    </p>
                   </div>
-                  <span className="bg-cyan-400/20 text-cyan-200 border border-cyan-400/30 rounded-full px-3 py-0.5 text-xs font-semibold uppercase">Active</span>
-                </div>
-                <p className="text-xs text-slate-400 mt-4">API Requests usage: <strong>45,201 / 100,000</strong></p>
-                <div className="mt-2 h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-cyan-400" style={{ width: "45%" }} />
+                  <button
+                    onClick={() => navigate("/billing")}
+                    className="flex items-center gap-2 rounded-xl bg-cyan-400 px-5 py-2.5 text-xs font-bold text-slate-950 hover:bg-cyan-300 transition shadow-lg shrink-0"
+                  >
+                    <Sparkles size={15} />
+                    Open Billing Hub
+                    <ArrowRight size={15} />
+                  </button>
                 </div>
               </div>
             </div>

@@ -13,8 +13,11 @@ from cache.redis_client import MemoryCache, get_cache
 from config.settings import get_settings
 from database import Base, SessionLocal, engine
 from db_indexes import ensure_performance_indexes
-from db_schema import ensure_auth_schema, ensure_billing_schema
+from db_schema import ensure_auth_schema, ensure_billing_schema, ensure_ai_schema, ensure_workflow_schema, ensure_developer_schema
 import billing.models  # noqa: F401
+import models.ai_copilot  # noqa: F401
+import models.workflow  # noqa: F401 — P5
+import models.developer  # noqa: F401 — P6
 from google_auth import router as google_router
 from middleware.rate_limit import RateLimitMiddleware
 from middleware.security import SecurityHeadersMiddleware
@@ -38,19 +41,46 @@ from routers.developer_router import router as developer_router
 from routers.workspace_router import router as workspace_router
 from routers.organization_router import router as organization_router
 from routers.billing_router import router as billing_router
+from routers.copilot_router import router as copilot_router
+from routers.workflow_router import router as workflow_router  # P5
+from routers.public_api_v1 import router as public_api_v1_router  # P6
+from routers.health_router import router as health_router  # P7
+from routers.metrics_router import router as metrics_router  # P7
 from ws_manager.socket import manager
 from middleware.api_audit_middleware import APIAuditMiddleware
 from middleware.tenant_context import TenantContextMiddleware
+from middleware.correlation import RequestCorrelationMiddleware  # P7
+from middleware.error_handler import (  # P7
+    http_exception_handler,
+    validation_exception_handler,
+    sqlalchemy_exception_handler,
+    unhandled_exception_handler,
+)
+from utils.structured_logging import setup_structured_logging  # P7
+from fastapi.exceptions import RequestValidationError, HTTPException
+from sqlalchemy.exc import SQLAlchemyError
 from auth.dependencies import require_workspace_member
 
 settings = get_settings()
-logging.basicConfig(
-    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+setup_structured_logging(settings.log_level, settings.log_format, settings.environment)
+
+app = FastAPI(
+    title=settings.app_name,
+    version="2.0.0",
+    debug=settings.debug,
 )
 
-app = FastAPI(title=settings.app_name, version="2.0.0")
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
+# Exception Handlers (P7)
+app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(SQLAlchemyError, sqlalchemy_exception_handler)
+app.add_exception_handler(Exception, unhandled_exception_handler)
+
+# Middleware Stack
+app.add_middleware(RequestCorrelationMiddleware)  # P7 outer correlation
 app.add_middleware(TenantContextMiddleware)
 app.add_middleware(APIAuditMiddleware)
 app.add_middleware(RateLimitMiddleware)
@@ -63,6 +93,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(health_router)  # P7
+app.include_router(metrics_router)  # P7
 app.include_router(auth_router)
 app.include_router(google_router)
 app.include_router(email_router, dependencies=[Depends(require_workspace_member)])
@@ -84,10 +116,16 @@ app.include_router(developer_router, dependencies=[Depends(require_workspace_mem
 app.include_router(workspace_router, dependencies=[Depends(require_workspace_member)])
 app.include_router(organization_router)
 app.include_router(billing_router)
+app.include_router(copilot_router)
+app.include_router(workflow_router, dependencies=[Depends(require_workspace_member)])  # P5
+app.include_router(public_api_v1_router)  # P6 Public API v1
 
 Base.metadata.create_all(bind=engine)
 ensure_auth_schema(engine)
 ensure_billing_schema(engine)
+ensure_ai_schema(engine)
+ensure_workflow_schema(engine)  # P5
+ensure_developer_schema(engine)  # P6
 ensure_performance_indexes(engine)
 
 try:

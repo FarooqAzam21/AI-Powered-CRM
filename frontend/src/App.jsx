@@ -25,6 +25,11 @@ const AIInsights = lazy(() => import("./crm/AIInsights"));
 const AITasks = lazy(() => import("./crm/AITasks"));
 const AIAgentsPage = lazy(() => import("./crm/AIAgentsPage"));
 const Settings = lazy(() => import("./crm/Settings"));
+const Billing = lazy(() => import("./crm/Billing"));
+const AICopilot = lazy(() => import("./crm/AICopilot"));
+const Workflows = lazy(() => import("./crm/Workflows"));
+const WorkflowBuilder = lazy(() => import("./crm/WorkflowBuilder"));
+const WorkflowApprovals = lazy(() => import("./crm/WorkflowApprovals"));
 
 // Developer Portal Pages
 const DeveloperDashboard = lazy(() => import("./pages/DeveloperDashboard"));
@@ -32,6 +37,8 @@ const APIKeys = lazy(() => import("./pages/APIKeys"));
 const WebhookManager = lazy(() => import("./pages/WebhookManager"));
 const Documentation = lazy(() => import("./pages/Documentation"));
 const APIExplorer = lazy(() => import("./pages/APIExplorer"));
+const DeveloperLogs = lazy(() => import("./pages/DeveloperLogs"));
+const DeveloperIntegrations = lazy(() => import("./pages/DeveloperIntegrations"));
 const OrganizationAdmin = lazy(() => import("./pages/OrganizationAdmin"));
 
 // Placeholder components for recruiter routes
@@ -212,6 +219,59 @@ function AppContent() {
             </RoutePermissionGuard>
           }
         />
+        <Route
+          path="billing"
+          element={
+            <RoutePermissionGuard
+              permissions={[
+                PERMISSIONS.SETTINGS_BILLING,
+                PERMISSIONS.SETTINGS_WORKSPACE,
+              ]}
+            >
+              <Billing />
+            </RoutePermissionGuard>
+          }
+        />
+        <Route
+          path="copilot"
+          element={
+            <RoutePermissionGuard permission={PERMISSIONS.DASHBOARD_VIEW}>
+              <AICopilot />
+            </RoutePermissionGuard>
+          }
+        />
+        <Route
+          path="workflows"
+          element={
+            <RoutePermissionGuard permission={PERMISSIONS.WORKFLOWS_VIEW}>
+              <Workflows />
+            </RoutePermissionGuard>
+          }
+        />
+        <Route
+          path="workflows/new"
+          element={
+            <RoutePermissionGuard permission={PERMISSIONS.WORKFLOWS_MANAGE}>
+              <WorkflowBuilder />
+            </RoutePermissionGuard>
+          }
+        />
+        <Route
+          path="workflows/:id/edit"
+          element={
+            <RoutePermissionGuard permission={PERMISSIONS.WORKFLOWS_MANAGE}>
+              <WorkflowBuilder />
+            </RoutePermissionGuard>
+          }
+        />
+        <Route
+          path="workflows/approvals"
+          element={
+            <RoutePermissionGuard permission={PERMISSIONS.APPROVALS_VIEW}>
+              <WorkflowApprovals />
+            </RoutePermissionGuard>
+          }
+        />
         
         {/* Recruiter Routes */}
         <Route
@@ -269,6 +329,22 @@ function AppContent() {
           element={
             <RoutePermissionGuard permission={PERMISSIONS.SETTINGS_WORKSPACE}>
               <Documentation />
+            </RoutePermissionGuard>
+          }
+        />
+        <Route
+          path="developer/logs"
+          element={
+            <RoutePermissionGuard permission={PERMISSIONS.SETTINGS_WORKSPACE}>
+              <DeveloperLogs />
+            </RoutePermissionGuard>
+          }
+        />
+        <Route
+          path="developer/integrations"
+          element={
+            <RoutePermissionGuard permission={PERMISSIONS.SETTINGS_WORKSPACE}>
+              <DeveloperIntegrations />
             </RoutePermissionGuard>
           }
         />

@@ -3,18 +3,20 @@ import RoleGuard from '../security/RoleGuard';
 
 const API_BASE = 'http://localhost:8000';
 const SCOPES = [
-  { value: 'contacts.read',   label: 'Contacts — Read',   desc: 'List and view contacts' },
-  { value: 'contacts.write',  label: 'Contacts — Write',  desc: 'Create and update contacts' },
-  { value: 'emails.read',     label: 'Emails — Read',     desc: 'View email inbox and threads' },
-  { value: 'emails.write',    label: 'Emails — Write',    desc: 'Send and manage emails' },
-  { value: 'campaigns.read',  label: 'Campaigns — Read',  desc: 'View campaign data' },
-  { value: 'campaigns.write', label: 'Campaigns — Write', desc: 'Create and send campaigns' },
-  { value: 'crm.read',        label: 'CRM — Read',        desc: 'Access deals, pipeline, leads' },
-  { value: 'crm.write',       label: 'CRM — Write',       desc: 'Modify CRM records' },
-  { value: 'analytics.read',  label: 'Analytics — Read',  desc: 'View reports and dashboards' },
-  { value: 'ai.reply',        label: 'AI — Reply',        desc: 'Trigger AI email replies' },
-  { value: 'ai.classify',     label: 'AI — Classify',     desc: 'Run email classification' },
-  { value: 'ai.score',        label: 'AI — Score',        desc: 'Score leads and contacts' },
+  { value: 'contacts:read',   label: 'Contacts — Read',   desc: 'List and view contacts' },
+  { value: 'contacts:write',  label: 'Contacts — Write',  desc: 'Create, update, and delete contacts' },
+  { value: 'deals:read',      label: 'Deals — Read',      desc: 'View pipeline deals and stages' },
+  { value: 'deals:write',     label: 'Deals — Write',     desc: 'Create and update deals' },
+  { value: 'tasks:read',      label: 'Tasks — Read',      desc: 'View workspace tasks' },
+  { value: 'tasks:write',     label: 'Tasks — Write',     desc: 'Create and update tasks' },
+  { value: 'activities:read', label: 'Activities — Read', desc: 'Read timeline activities' },
+  { value: 'activities:write',label: 'Activities — Write',desc: 'Log calls, emails, and meetings' },
+  { value: 'emails:read',     label: 'Emails — Read',     desc: 'Read workspace email metadata' },
+  { value: 'workflows:read',  label: 'Workflows — Read',  desc: 'View automation workflows' },
+  { value: 'workflows:execute',label: 'Workflows — Execute', desc: 'Trigger active workflows' },
+  { value: 'analytics:read',  label: 'Analytics — Read',  desc: 'Access read-only CRM metrics' },
+  { value: 'ai:use',          label: 'AI — Prompt Completion', desc: 'Controlled AI inference' },
+  { value: 'webhooks:manage', label: 'Webhooks — Manage', desc: 'Create and configure webhooks' },
 ];
 
 export default function APIKeys() {

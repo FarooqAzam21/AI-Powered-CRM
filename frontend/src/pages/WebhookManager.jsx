@@ -6,12 +6,17 @@ const API_BASE = 'http://localhost:8000';
 const ALL_EVENTS = [
   { value: 'contact.created',   label: 'Contact Created',   desc: 'Fires when a new contact is added' },
   { value: 'contact.updated',   label: 'Contact Updated',   desc: 'Fires when a contact record is modified' },
+  { value: 'contact.deleted',   label: 'Contact Deleted',   desc: 'Fires when a contact is removed' },
   { value: 'deal.created',      label: 'Deal Created',      desc: 'New deal added to pipeline' },
-  { value: 'deal.updated',      label: 'Deal Updated',      desc: 'Deal stage or value changed' },
-  { value: 'deal.won',          label: 'Deal Won',          desc: 'Deal marked as closed won' },
-  { value: 'deal.lost',         label: 'Deal Lost',         desc: 'Deal marked as closed lost' },
-  { value: 'campaign.started',  label: 'Campaign Started',  desc: 'Email campaign launched' },
-  { value: 'email.received',    label: 'Email Received',    desc: 'Inbound email received' },
+  { value: 'deal.updated',      label: 'Deal Updated',      desc: 'Deal record updated' },
+  { value: 'deal.stage_changed',label: 'Deal Stage Changed',desc: 'Deal stage transitioned' },
+  { value: 'task.created',      label: 'Task Created',      desc: 'New task assigned' },
+  { value: 'task.completed',    label: 'Task Completed',    desc: 'Task marked finished' },
+  { value: 'workflow.completed',label: 'Workflow Completed',desc: 'Automation workflow executed successfully' },
+  { value: 'workflow.failed',   label: 'Workflow Failed',   desc: 'Workflow encountered an error' },
+  { value: 'approval.created',  label: 'Approval Requested',desc: 'Action gate requires human review' },
+  { value: 'approval.completed',label: 'Approval Decided',  desc: 'Action approved or rejected' },
+  { value: 'email.received',    label: 'Email Received',    desc: 'Inbound email synced' },
 ];
 
 function StatusDot({ status }) {

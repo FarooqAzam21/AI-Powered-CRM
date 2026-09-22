@@ -1,7 +1,7 @@
 import { Menu, Moon, Sun, X } from "lucide-react";
 import { useState, useMemo } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { BarChart3, Bot, Briefcase, Brain, Code2, DollarSign, FileText, Globe, Inbox, Key, LayoutDashboard, Megaphone, Settings, UserCircle, Users, Webhook } from "lucide-react";
+import { BarChart3, Bot, Briefcase, Brain, Activity, Code2, CreditCard, DollarSign, FileText, GitBranch, Globe, Inbox, Key, LayoutDashboard, Megaphone, Plug2, Settings, ShieldCheck, Sparkles, UserCircle, Users, Webhook } from "lucide-react";
 
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
@@ -12,11 +12,14 @@ import WorkspaceSelector from "./WorkspaceSelector";
 
 const nav = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, permission: PERMISSIONS.DASHBOARD_VIEW },
+  { label: "AI Copilot", href: "/copilot", icon: Sparkles, permission: PERMISSIONS.DASHBOARD_VIEW },
   { label: "Inbox", href: "/inbox", icon: Inbox, permission: PERMISSIONS.INBOX_VIEW },
   { label: "Contacts", href: "/contacts", icon: Users, permission: PERMISSIONS.CONTACTS_VIEW },
   { label: "Pipelines", href: "/pipelines", icon: Briefcase, permission: PERMISSIONS.PIPELINES_VIEW },
   { label: "Deals", href: "/deals", icon: DollarSign, permission: PERMISSIONS.DEALS_VIEW },
   { label: "Campaigns", href: "/campaigns", icon: Megaphone, permission: PERMISSIONS.CAMPAIGNS_VIEW },
+  { label: "Workflows", href: "/workflows", icon: GitBranch, permission: PERMISSIONS.WORKFLOWS_VIEW },
+  { label: "Approvals", href: "/workflows/approvals", icon: ShieldCheck, permission: PERMISSIONS.APPROVALS_VIEW },
   { label: "Lead Profiles", href: "/lead-profiles", icon: UserCircle, permission: PERMISSIONS.CONTACTS_VIEW },
   { label: "AI Insights", href: "/ai-insights", icon: Brain, permission: PERMISSIONS.AI_ANALYTICS },
   { label: "Analytics", href: "/analytics", icon: BarChart3, permission: PERMISSIONS.ANALYTICS_VIEW },
@@ -24,6 +27,7 @@ const nav = [
   { label: "AI Agents", href: "/ai-agents", icon: Brain, permission: PERMISSIONS.AI_SETTINGS },
   { label: "Hiring", href: "/hiring", icon: Briefcase, permission: PERMISSIONS.HIRING_VIEW },
   { label: "Candidates", href: "/candidates", icon: Users, permission: PERMISSIONS.CANDIDATES_VIEW },
+  { label: "Billing", href: "/billing", icon: CreditCard, permission: [PERMISSIONS.SETTINGS_BILLING, PERMISSIONS.SETTINGS_WORKSPACE] },
   { 
     label: "Settings", 
     href: "/settings", 
@@ -37,11 +41,13 @@ const nav = [
 ];
 
 const devNav = [
-  { label: "Dev Console", href: "/developer",          icon: Code2 },
-  { label: "API Keys",    href: "/developer/keys",      icon: Key },
-  { label: "Webhooks",   href: "/developer/webhooks",  icon: Webhook },
-  { label: "API Explorer",href: "/developer/explorer",  icon: Globe },
-  { label: "Docs",       href: "/developer/docs",      icon: FileText },
+  { label: "Dev Console",  href: "/developer",              icon: Code2 },
+  { label: "API Keys",     href: "/developer/keys",         icon: Key },
+  { label: "Webhooks",    href: "/developer/webhooks",     icon: Webhook },
+  { label: "Logs",        href: "/developer/logs",         icon: Activity },
+  { label: "Integrations",href: "/developer/integrations", icon: Plug2 },
+  { label: "API Explorer",href: "/developer/explorer",     icon: Globe },
+  { label: "Docs",        href: "/developer/docs",         icon: FileText },
 ];
 
 function NavItems({ items, onNavigate }) {

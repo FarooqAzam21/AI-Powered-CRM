@@ -162,6 +162,16 @@ export async function generateReply(payload) {
   return data;
 }
 
+export async function getReplyQuota() {
+  const { data } = await API.get("/api/v1/ai/reply-quota");
+  return data;
+}
+
+export async function sendEmailReply(payload) {
+  const { data } = await API.post("/email/send-reply", payload);
+  return data;
+}
+
 export async function getCeleryHealth() {
   const { data } = await API.get("/tasks/health");
   return data;
@@ -257,5 +267,179 @@ export async function getWsPipelineSnapshot() {
 
 export async function getWsConnections() {
   const { data } = await API.get("/api/v1/ws/connections");
+  return data;
+}
+
+// Phase P3 — Enterprise Billing & Subscriptions
+export async function getBillingPlans() {
+  const { data } = await API.get("/api/v1/billing/plans");
+  return data;
+}
+
+export async function getBillingSubscription() {
+  const { data } = await API.get("/api/v1/billing/subscription");
+  return data;
+}
+
+export async function getBillingUsage() {
+  const { data } = await API.get("/api/v1/billing/usage");
+  return data;
+}
+
+export async function getBillingFeatures() {
+  const { data } = await API.get("/api/v1/billing/features");
+  return data;
+}
+
+export async function subscribePlan(payload) {
+  const { data } = await API.post("/api/v1/billing/subscribe", payload);
+  return data;
+}
+
+export async function cancelSubscription() {
+  const { data } = await API.post("/api/v1/billing/cancel");
+  return data;
+}
+
+export async function startBillingTrial(payload) {
+  const { data } = await API.post("/api/v1/billing/trial/start", payload);
+  return data;
+}
+
+export async function getBillingHistory() {
+  const { data } = await API.get("/api/v1/billing/history");
+  return data;
+}
+
+export async function createBillingCheckout(payload) {
+  const { data } = await API.post("/api/v1/billing/checkout", payload);
+  return data;
+}
+
+// Phase P4 — Enterprise AI Copilot & Knowledge RAG
+export async function getCopilotStatus() {
+  const { data } = await API.get("/api/v1/copilot/status");
+  return data;
+}
+
+export async function listCopilotConversations(params = {}) {
+  const { data } = await API.get("/api/v1/copilot/conversations", { params });
+  return data;
+}
+
+export async function createCopilotConversation(payload = {}) {
+  const { data } = await API.post("/api/v1/copilot/conversations", payload);
+  return data;
+}
+
+export async function getCopilotConversation(conversationId) {
+  const { data } = await API.get(`/api/v1/copilot/conversations/${conversationId}`);
+  return data;
+}
+
+export async function deleteCopilotConversation(conversationId) {
+  const { data } = await API.delete(`/api/v1/copilot/conversations/${conversationId}`);
+  return data;
+}
+
+export async function sendCopilotMessage(payload) {
+  const { data } = await API.post("/api/v1/copilot/chat", payload);
+  return data;
+}
+
+export async function confirmCopilotAction(payload) {
+  const { data } = await API.post("/api/v1/copilot/actions/confirm", payload);
+  return data;
+}
+
+export async function rejectCopilotAction(payload) {
+  const { data } = await API.post("/api/v1/copilot/actions/reject", payload);
+  return data;
+}
+
+export async function indexKnowledgeBase(payload) {
+  const { data } = await API.post("/api/v1/copilot/rag/index", payload);
+  return data;
+}
+
+export async function searchKnowledgeBase(query) {
+  const { data } = await API.get("/api/v1/copilot/rag/search", { params: { q: query } });
+  return data;
+}
+
+
+// ── P5: Workflow Automation API ────────────────────────────────────────────
+
+export async function listWorkflows(params = {}) {
+  const { data } = await API.get("/api/v1/workflows/", { params });
+  return data;
+}
+
+export async function createWorkflow(payload) {
+  const { data } = await API.post("/api/v1/workflows/", payload);
+  return data;
+}
+
+export async function getWorkflow(id) {
+  const { data } = await API.get(`/api/v1/workflows/${id}`);
+  return data;
+}
+
+export async function updateWorkflow(id, payload) {
+  const { data } = await API.put(`/api/v1/workflows/${id}`, payload);
+  return data;
+}
+
+export async function deleteWorkflow(id) {
+  await API.delete(`/api/v1/workflows/${id}`);
+}
+
+export async function enableWorkflow(id) {
+  const { data } = await API.post(`/api/v1/workflows/${id}/enable`);
+  return data;
+}
+
+export async function disableWorkflow(id) {
+  const { data } = await API.post(`/api/v1/workflows/${id}/disable`);
+  return data;
+}
+
+export async function validateWorkflow(id) {
+  const { data } = await API.post(`/api/v1/workflows/${id}/validate`);
+  return data;
+}
+
+export async function testWorkflow(id, testData = {}) {
+  const { data } = await API.post(`/api/v1/workflows/${id}/test`, testData);
+  return data;
+}
+
+export async function listWorkflowExecutions(workflowId, params = {}) {
+  const { data } = await API.get(`/api/v1/workflows/${workflowId}/executions`, { params });
+  return data;
+}
+
+export async function getWorkflowExecution(execId) {
+  const { data } = await API.get(`/api/v1/workflows/executions/${execId}`);
+  return data;
+}
+
+export async function cancelWorkflowExecution(execId) {
+  const { data } = await API.post(`/api/v1/workflows/executions/${execId}/cancel`);
+  return data;
+}
+
+export async function listPendingApprovals() {
+  const { data } = await API.get("/api/v1/workflows/approvals/pending");
+  return data;
+}
+
+export async function approveAction(approvalId, notes = "") {
+  const { data } = await API.post(`/api/v1/workflows/approvals/${approvalId}/approve`, { decision: "approved", notes });
+  return data;
+}
+
+export async function rejectAction(approvalId, notes = "") {
+  const { data } = await API.post(`/api/v1/workflows/approvals/${approvalId}/reject`, { decision: "rejected", notes });
   return data;
 }

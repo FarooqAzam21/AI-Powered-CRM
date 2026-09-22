@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
-import { User, Lock, Mail, ChevronRight, AlertCircle, CheckCircle2 } from "lucide-react";
+import { User, Lock, Mail, Building2, ChevronRight, AlertCircle, CheckCircle2 } from "lucide-react";
 import BackgroundParticles from "../Components/BackgroundParticles";
 import GoogleAuthButton from "../Components/GoogleAuthButton";
 
@@ -11,6 +11,7 @@ export default function Register() {
   const navigate = useNavigate();
 
   const [name, setName] = useState("");
+  const [workspaceName, setWorkspaceName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -31,7 +32,7 @@ export default function Register() {
 
     console.log("DEBUG: Starting registration for", email);
     try {
-      const result = await register(name, email, password, role);
+      const result = await register(name, email, password, role, workspaceName);
       console.log("DEBUG: Registration result:", result);
 
       if (result.success) {
@@ -108,6 +109,22 @@ export default function Register() {
                     placeholder="John Doe"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300 ml-1">Workspace / Company Name</label>
+                <div className="relative group/input">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within/input:text-green-500 transition-colors">
+                    <Building2 size={18} />
+                  </div>
+                  <input
+                    type="text"
+                    className="w-full pl-12 pr-4 py-3 bg-slate-950/50 border border-slate-800 rounded-2xl focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all text-white placeholder:text-slate-600"
+                    placeholder="e.g. Acme Corp (Optional)"
+                    value={workspaceName}
+                    onChange={(e) => setWorkspaceName(e.target.value)}
                   />
                 </div>
               </div>

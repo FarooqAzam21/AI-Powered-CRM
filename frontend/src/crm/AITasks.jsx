@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, Cpu, Mail, RefreshCw, Sparkles } from "lucide-react";
+import { Bot, Check, Copy, Cpu, Mail, RefreshCw, Send, Sparkles } from "lucide-react";
 
 import {
   classifyEmail,
@@ -13,8 +13,10 @@ import {
   getTask,
   getTaskStatus,
   getEmailContext,
+  getReplyQuota,
   manuallyClassifySyncedEmail,
   searchEmails,
+  sendEmailReply,
   triggerGmailSync,
 } from "./api";
 import useApiResource from "./useApiResource";
@@ -42,6 +44,7 @@ export default function AITasks() {
   const [classifyResult, setClassifyResult] = useState(null);
   const [replyForm, setReplyForm] = useState({ subject: "", body: "", tone: "professional" });
   const [replyResult, setReplyResult] = useState(null);
+  const [quota, setQuota] = useState(null); // { limit, used, remaining, reset_at }
   const [busy, setBusy] = useState("");
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -54,6 +57,13 @@ export default function AITasks() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [selectedEmailContext, setSelectedEmailContext] = useState(null);
   const [selectedEmailLoading, setSelectedEmailLoading] = useState(false);
+
+  // Load quota on mount
+  useEffect(() => {
+    getReplyQuota()
+      .then((q) => setQuota(q))
+      .catch(() => {}); // non-critical
+  }, []);
 
   async function lookup() {
     try {
@@ -207,13 +217,24 @@ export default function AITasks() {
     if (!selectedContext) return;
     setBusy("reply");
     try {
-      setReplyResult(
-        await generateReply({
-          contact_id: selectedContext.contact_id || null,
-          email_body: replyForm.body || selectedContext.body || selectedContext.snippet || "",
-          tone: replyForm.tone,
-        }),
-      );
+      const res = await generateReply({
+        contact_id: selectedContext.contact_id || null,
+        email_body: replyForm.body || selectedContext.body || selectedContext.snippet || "",
+        tone: replyForm.tone,
+      });
+      setReplyResult(res);
+      // update quota badge from response
+      if (res?.quota) setQuota((prev) => ({ ...prev, ...res.quota }));
+    } catch (err) {
+      // 429 rate-limit error — surface it in the result card
+      const detail = err?.response?.data?.detail;
+      if (err?.response?.status === 429 && detail) {
+        setReplyResult({ status: "rate_limited", ...detail });
+        // refresh displayed quota
+        getReplyQuota().then(setQuota).catch(() => {});
+      } else {
+        setReplyResult({ status: "error", message: err?.response?.data?.detail || String(err) });
+      }
     } finally {
       setBusy("");
     }
@@ -379,16 +400,25 @@ export default function AITasks() {
               </option>
             ))}
           </select>
-          <button 
-            disabled={!canReply || busy === "reply" || !selectedContext} 
-            onClick={runReply} 
-            title={!canReply ? "Requires AI Reply permission (Sales, Support, or Admin)" : "Generate Reply"}
-            className="rounded-md bg-cyan-400 px-3 py-2 text-sm font-medium text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Generate Reply
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button 
+              disabled={!canReply || busy === "reply" || !selectedContext || quota?.remaining === 0} 
+              onClick={runReply} 
+              title={!canReply ? "Requires AI Reply permission (Sales, Support, or Admin)" : quota?.remaining === 0 ? `Quota exhausted — resets at ${quota?.reset_at} UTC` : "Generate Reply"}
+              className="rounded-md bg-cyan-400 px-3 py-2 text-sm font-medium text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-cyan-300 transition-colors"
+            >
+              {busy === "reply" ? "Generating Reply..." : "Generate Reply"}
+            </button>
+            <QuotaBadge quota={quota} />
+          </div>
           {selectedEmailLoading && <p className="mt-3 text-sm text-slate-400">Loading selected email details...</p>}
-          {replyResult && <pre className="mt-3 overflow-auto rounded-md bg-black/30 p-3 text-xs text-slate-300">{JSON.stringify(replyResult, null, 2)}</pre>}
+          <GeneratedReplyResult
+            result={replyResult}
+            tone={replyForm.tone}
+            recipientEmail={selectedContext?.sender_email || selectedContext?.sender || ""}
+            subject={selectedContext?.subject || replyForm.subject || ""}
+            threadId={selectedContext?.thread_id || ""}
+          />
         </Panel>
       </div>
 
@@ -530,6 +560,171 @@ function ClassificationResult({ result }) {
       </div>
       <p className="mt-2 text-slate-300">{classification?.action || "Review this email"}</p>
       {classification?.priority && <p className="mt-1 text-xs text-slate-500">Priority: {classification.priority}</p>}
+    </div>
+  );
+}
+
+function QuotaBadge({ quota }) {
+  if (!quota) return null;
+  const { remaining, limit, reset_at } = quota;
+  const pct = remaining / limit;
+  const tone =
+    remaining === 0
+      ? "border-rose-400/30 bg-rose-400/10 text-rose-300"
+      : pct <= 0.4
+        ? "border-amber-400/30 bg-amber-400/10 text-amber-200"
+        : "border-emerald-400/30 bg-emerald-400/10 text-emerald-200";
+  const label = remaining === 0 ? `0/${limit} — resets ${reset_at?.slice(11, 16)} UTC` : `${remaining}/${limit} replies left`;
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${tone}`}
+      title={`${remaining} of ${limit} AI replies remaining this hour. Resets at ${reset_at} UTC.`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function GeneratedReplyResult({ result, tone, recipientEmail, subject, threadId }) {
+  const [copied, setCopied] = useState(false);
+  const [sendState, setSendState] = useState("idle"); // idle | sending | sent | error
+  const [sendError, setSendError] = useState("");
+
+  if (!result) return null;
+
+  // Rate limit exceeded
+  if (result?.status === "rate_limited") {
+    return (
+      <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-950/20 p-4 text-sm">
+        <p className="font-semibold text-amber-200">⏱ Hourly reply limit reached</p>
+        <p className="mt-1 text-xs text-amber-400">{result.message}</p>
+        {result.reset_at && (
+          <p className="mt-2 text-[11px] text-amber-500">Quota resets at {result.reset_at} UTC</p>
+        )}
+      </div>
+    );
+  }
+
+  const isError = result?.status === "error" || result?.error;
+  const replyText = typeof result === "string" ? result : (result?.reply || result?.data?.reply || "");
+
+  function handleCopy() {
+    if (!replyText) return;
+    navigator.clipboard.writeText(replyText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function handleSend() {
+    if (!replyText || sendState === "sending") return;
+    setSendState("sending");
+    setSendError("");
+    try {
+      await sendEmailReply({
+        recipient_email: recipientEmail,
+        subject: subject ? `Re: ${subject.replace(/^Re:\s*/i, "")}` : "Re: (no subject)",
+        body: replyText,
+        thread_id: threadId || undefined,
+      });
+      setSendState("sent");
+      setTimeout(() => setSendState("idle"), 3000);
+    } catch (err) {
+      const msg = err?.response?.data?.detail || err?.message || "Failed to send email.";
+      setSendError(msg);
+      setSendState("error");
+    }
+  }
+
+  if (isError) {
+    return (
+      <div className="mt-3 rounded-lg border border-rose-500/20 bg-rose-950/20 p-3.5 text-sm">
+        <p className="font-medium text-rose-300">Failed to generate reply</p>
+        <p className="mt-1 text-xs text-rose-400">{result.message || result.error || "An error occurred."}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 overflow-hidden rounded-lg border border-cyan-500/20 bg-slate-900/60 shadow-lg shadow-black/20">
+      {/* Header row */}
+      <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <Sparkles size={15} className="text-cyan-400" />
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-200">AI Drafted Reply</span>
+          {tone && (
+            <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-cyan-300">
+              {tone}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white active:bg-white/15"
+        >
+          {copied ? (
+            <>
+              <Check size={13} className="text-emerald-400" />
+              <span className="text-emerald-400 font-medium">Copied!</span>
+            </>
+          ) : (
+            <>
+              <Copy size={13} />
+              <span>Copy</span>
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Reply body */}
+      <div className="p-4">
+        <div className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-slate-200 selection:bg-cyan-500/30">
+          {replyText}
+        </div>
+      </div>
+
+      {/* Send footer */}
+      <div className="flex flex-col gap-2 border-t border-white/5 bg-white/[0.02] px-4 py-3">
+        {recipientEmail && (
+          <p className="text-[11px] text-slate-500">
+            To: <span className="text-slate-400">{recipientEmail}</span>
+          </p>
+        )}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={sendState === "sending" || sendState === "sent"}
+            onClick={handleSend}
+            className={`inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition-all disabled:cursor-not-allowed ${
+              sendState === "sent"
+                ? "border border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
+                : sendState === "error"
+                  ? "border border-rose-400/30 bg-rose-400/10 text-rose-300 hover:bg-rose-400/20"
+                  : "bg-cyan-400 text-slate-950 hover:bg-cyan-300 disabled:opacity-60"
+            }`}
+          >
+            {sendState === "sending" ? (
+              <>
+                <RefreshCw size={14} className="animate-spin" />
+                Sending…
+              </>
+            ) : sendState === "sent" ? (
+              <>
+                <Check size={14} />
+                Sent!
+              </>
+            ) : (
+              <>
+                <Send size={14} />
+                Send Reply
+              </>
+            )}
+          </button>
+          {sendState === "error" && sendError && (
+            <p className="text-xs text-rose-400">{sendError}</p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

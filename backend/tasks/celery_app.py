@@ -66,6 +66,26 @@ celery_app.conf.update(
     broker_connection_max_retries=3 if CELERY_REDIS_AVAILABLE else 0,
 )
 
+# Task signal handlers for operational metrics
+from celery.signals import task_sent, task_failure, task_success
+
+@task_sent.connect
+def on_task_sent(sender=None, headers=None, body=None, **kwargs):
+    try:
+        from services.metrics_service import metrics_service
+        metrics_service.inc("celery_tasks_queued_total")
+    except Exception:
+        pass
+
+@task_failure.connect
+def on_task_failure(sender=None, task_id=None, exception=None, args=None, kwargs=None, **other):
+    try:
+        from services.metrics_service import metrics_service
+        metrics_service.inc("celery_tasks_failed_total")
+        logger.error("Celery task %s failed (task_id=%s): %s", sender.name if sender else "unknown", task_id, exception)
+    except Exception:
+        pass
+
 # =================== PERIODIC TASKS ===================
 celery_app.conf.beat_schedule = {
     "sync-gmail-every-5-minutes": {
@@ -128,6 +148,12 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(minute="*/30"),  # Every 30 minutes
         "options": {"queue": "campaigns"},
     },
+    # P5 — Workflow Automation
+    "check-scheduled-workflows-every-minute": {
+        "task": "tasks.workflow_tasks.check_scheduled_workflows",
+        "schedule": crontab(minute="*"),
+        "options": {"queue": "workflow"},
+    },
 }
 
 # =================== TASK ROUTING ===================
@@ -140,6 +166,8 @@ celery_app.conf.task_routes = {
     "tasks.crm.*": {"queue": "crm"},
     "tasks.analytics.*": {"queue": "analytics"},
     "tasks.dashboard.*": {"queue": "dashboard"},
+    "tasks.workflow_tasks.*": {"queue": "workflow"},  # P5
+    "tasks.webhook_tasks.*": {"queue": "webhooks"},  # P6
     "workers.email_tasks.*": {"queue": "email"},
     "workers.campaign_tasks.*": {"queue": "campaigns"},
 }
@@ -149,7 +177,9 @@ celery_app.conf.task_routes = {
 try:
     from . import (
         email_tasks, ai_tasks, lead_tasks, campaign_tasks,
-        auth_tasks, crm_tasks, analytics_tasks, dashboard_tasks
+        auth_tasks, crm_tasks, analytics_tasks, dashboard_tasks,
+        workflow_tasks,  # P5
+        webhook_tasks,   # P6
     )
     import workers.email_tasks  # noqa: F401
     import workers.campaign_tasks  # noqa: F401

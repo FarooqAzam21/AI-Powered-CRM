@@ -26,6 +26,9 @@ PLAN_DEFAULTS: Dict[str, Dict[str, Any]] = {
             "api_requests": 100,
             "storage_mb": 100,
             "automations": 0,
+            "workflows": 0,
+            "workflow_runs": 0,
+            "ai_workflow_actions": 0,
         },
         "features": [
             "basic_crm",
@@ -52,6 +55,9 @@ PLAN_DEFAULTS: Dict[str, Dict[str, Any]] = {
             "api_requests": 1000,
             "storage_mb": 1000,
             "automations": 5,
+            "workflows": 3,
+            "workflow_runs": 50,
+            "ai_workflow_actions": 0,
         },
         "features": [
             "basic_crm",
@@ -80,6 +86,9 @@ PLAN_DEFAULTS: Dict[str, Dict[str, Any]] = {
             "api_requests": 10000,
             "storage_mb": 10000,
             "automations": 50,
+            "workflows": 25,
+            "workflow_runs": 1000,
+            "ai_workflow_actions": 500,
         },
         "features": [
             "basic_crm",
@@ -90,6 +99,7 @@ PLAN_DEFAULTS: Dict[str, Dict[str, Any]] = {
             "api_access",
             "webhooks",
             "workflow_automation",
+            "ai_workflow_actions",
         ],
     },
     "enterprise": {
@@ -112,6 +122,9 @@ PLAN_DEFAULTS: Dict[str, Dict[str, Any]] = {
             "api_requests": -1,
             "storage_mb": -1,
             "automations": -1,
+            "workflows": -1,
+            "workflow_runs": -1,
+            "ai_workflow_actions": -1,
         },
         "features": ["*"],
     },
@@ -158,7 +171,10 @@ def seed_default_plans(db: Session) -> List[Plan]:
 def get_cached_plan(db: Session, plan_id: int) -> Optional[Plan]:
     key = f"id:{plan_id}"
     if key in _PLAN_CACHE:
-        return _PLAN_CACHE[key]
+        try:
+            return db.merge(_PLAN_CACHE[key], load=False)
+        except Exception:
+            _PLAN_CACHE.pop(key, None)
     plan = db.query(Plan).filter(Plan.id == plan_id).first()
     if plan:
         _PLAN_CACHE[key] = plan
@@ -168,7 +184,10 @@ def get_cached_plan(db: Session, plan_id: int) -> Optional[Plan]:
 def get_cached_plan_by_slug(db: Session, slug: str) -> Optional[Plan]:
     key = f"slug:{slug}"
     if key in _PLAN_CACHE:
-        return _PLAN_CACHE[key]
+        try:
+            return db.merge(_PLAN_CACHE[key], load=False)
+        except Exception:
+            _PLAN_CACHE.pop(key, None)
     plan = db.query(Plan).filter(Plan.slug == slug).first()
     if plan:
         _PLAN_CACHE[key] = plan

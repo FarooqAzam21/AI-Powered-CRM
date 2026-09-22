@@ -137,3 +137,43 @@ def ensure_billing_schema(engine):
     except Exception as exc:
         logger.warning("Could not ensure billing schema: %s", exc)
 
+
+def ensure_ai_schema(engine):
+    """Ensure AI Copilot, memory, RAG, and audit tables exist."""
+    try:
+        from database import Base
+        from models.ai_copilot import AIConversation, AIMessage, RAGDocument, AIAuditLog  # noqa: F401
+        Base.metadata.create_all(bind=engine)
+        logger.info("AI Copilot and RAG schema verified.")
+    except Exception as exc:
+        logger.warning("Could not ensure AI schema: %s", exc)
+
+
+def ensure_workflow_schema(engine):
+    """Ensure P5 workflow automation tables exist and indexes are in place."""
+    try:
+        from database import Base
+        from models.workflow import (  # noqa: F401
+            Workflow, WorkflowExecution, WorkflowExecutionStep,
+            WorkflowApproval, WorkflowAuditLog,
+        )
+        Base.metadata.create_all(bind=engine)
+        logger.info("Workflow automation schema verified.")
+    except Exception as exc:
+        logger.warning("Could not ensure workflow schema: %s", exc)
+
+
+def ensure_developer_schema(engine):
+    """Ensure P6 Developer Platform tables (API keys, webhooks, integrations, logs) exist."""
+    try:
+        from database import Base
+        from models.developer import (  # noqa: F401
+            DeveloperAPIKey, WebhookEndpoint, WebhookDeliveryRecord,
+            IntegrationConnection, PublicAPILog,
+        )
+        Base.metadata.create_all(bind=engine)
+        logger.info("Developer Platform schema verified.")
+    except Exception as exc:
+        logger.warning("Could not ensure Developer Platform schema: %s", exc)
+
+

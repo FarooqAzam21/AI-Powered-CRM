@@ -60,7 +60,58 @@ export default function WorkspaceSelector() {
     }
   };
 
-  if (!currentWs) return null;
+  if (!currentWs) {
+    return (
+      <div style={styles.container}>
+        <button 
+          style={{ 
+            ...styles.selectorBtn, 
+            border: '1px dashed #6366f1', 
+            background: 'rgba(99, 102, 241, 0.08)',
+            color: '#a5b4fc',
+            justifyContent: 'center',
+            padding: '8px 14px'
+          }} 
+          onClick={() => setShowCreate(true)}
+        >
+          ＋ Create Workspace
+        </button>
+
+        {showCreate && (
+          <div style={styles.overlay}>
+            <div style={styles.modal}>
+              <h3 style={styles.modalTitle}>Create Workspace</h3>
+              <div style={styles.field}>
+                <label style={styles.label}>Workspace Name</label>
+                <input
+                  style={styles.input}
+                  placeholder="e.g. Sales Division"
+                  value={newWsName}
+                  onChange={e => setNewWsName(e.target.value)}
+                />
+              </div>
+              <div style={styles.field}>
+                <label style={styles.label}>Workspace Type</label>
+                <select
+                  style={styles.input}
+                  value={newWsType}
+                  onChange={e => setNewWsType(e.target.value)}
+                >
+                  <option value="Personal">Personal Workspace</option>
+                  <option value="Team">Team Workspace</option>
+                  <option value="Enterprise">Enterprise Workspace</option>
+                </select>
+              </div>
+              <div style={styles.modalActions}>
+                <button style={styles.cancelBtn} onClick={() => setShowCreate(false)}>Cancel</button>
+                <button style={styles.submitBtn} onClick={handleCreate}>Create Workspace</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={styles.container}>

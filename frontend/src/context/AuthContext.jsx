@@ -25,10 +25,16 @@ export const AuthProvider = ({ children }) => {
         email: res.data.email,
         name: res.data.name,
         role: res.data.role,
+        workspace_id: res.data.workspace_id,
+        organization_id: res.data.organization_id,
         gmail_connected: res.data.gmail_connected,
       };
 
       localStorage.setItem("token", res.data.access_token);
+      localStorage.setItem("refresh_token", res.data.refresh_token);
+      if (res.data.workspace_id) {
+        localStorage.setItem("active_workspace_id", String(res.data.workspace_id));
+      }
       localStorage.setItem("user", JSON.stringify(userObj));
       setUser(userObj);
       return { success: true };
@@ -39,13 +45,14 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  const register = useCallback(async (name, email, password, role) => {
+  const register = useCallback(async (name, email, password, role, workspace_name) => {
     try {
       const res = await API.post("/auth/register", {
         name,
         email,
         password,
         role,
+        workspace_name,
       });
 
       // Backend now returns access_token on register too
@@ -56,9 +63,17 @@ export const AuthProvider = ({ children }) => {
           email: res.data.email,
           name: res.data.name,
           role: res.data.role,
+          workspace_id: res.data.workspace_id,
+          organization_id: res.data.organization_id,
           gmail_connected: res.data.gmail_connected,
         };
         localStorage.setItem("token", res.data.access_token);
+        if (res.data.refresh_token) {
+          localStorage.setItem("refresh_token", res.data.refresh_token);
+        }
+        if (res.data.workspace_id) {
+          localStorage.setItem("active_workspace_id", String(res.data.workspace_id));
+        }
         localStorage.setItem("user", JSON.stringify(userObj));
         setUser(userObj);
       }
@@ -89,9 +104,16 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  const logout = useCallback(() => {
-    localStorage.clear();
-    setUser(null);
+  const logout = useCallback(async () => {
+    try {
+      const refreshToken = localStorage.getItem("refresh_token");
+      await API.post("/auth/logout", { refresh_token: refreshToken });
+    } catch (e) {
+      console.error("Logout error", e);
+    } finally {
+      localStorage.clear();
+      setUser(null);
+    }
   }, []);
 
   const ssoLogin = useCallback((token) => {

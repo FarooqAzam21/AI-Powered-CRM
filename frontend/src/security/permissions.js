@@ -34,6 +34,11 @@ export const PERMISSIONS = {
   AI_ANALYTICS: "ai.analytics",
   AI_SETTINGS: "ai.settings",
 
+  // P5 — Workflow Automation
+  WORKFLOWS_VIEW: "workflows.view",
+  WORKFLOWS_MANAGE: "workflows.manage",
+  APPROVALS_VIEW: "approvals.view",
+
   // Settings
   SETTINGS_WORKSPACE: "settings.workspace",
   SETTINGS_BILLING: "settings.billing",
@@ -43,3 +48,4 @@ export const PERMISSIONS = {
   SETTINGS_ROLES: "settings.roles",
   SETTINGS_USERS: "settings.users",
 };
+
